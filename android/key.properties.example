@@ -1,0 +1,5 @@
+# Copy to android/key.properties (never commit that file) and fill in.
+storeFile=C:/Users/WR/keys/spanweb-upload.jks
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=upload
+keyPassword=YOUR_KEY_PASSWORD
