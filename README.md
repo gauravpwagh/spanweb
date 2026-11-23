@@ -35,7 +35,7 @@ A private link collector for Android and iOS, built with Flutter.
 | Forgotten PIN | No recovery, by design. "Forgot PIN?" erases everything. Keep an export |
 | Lock | Locks whenever the app leaves the screen; keys are dropped from memory |
 | Screen | `FLAG_SECURE` on Android (no screenshots, blank app-switcher preview); a cover on iOS when inactive |
-| Network | None. Release Android builds have no INTERNET permission at all |
+| Network | None in the `store` edition: no INTERNET permission at all. The internal-test `preview` edition uses HTTPS for opt-in thumbnails only (see Editions) |
 | Backup | Android cloud backup and device transfer are off; move links with Export |
 
 Dart can't guarantee that freed memory is wiped, so keys may stay in RAM
@@ -116,10 +116,12 @@ separate app extension target, which can only be added in Xcode:
 On iOS, the shared text waits briefly in the App Group container until the
 main app opens and seals it into the encrypted inbox.
 
-## Next version: thumbnails (not built)
+## Thumbnails (preview edition only)
 
-Only if it can be done safely: fetch only from an allowlist of known image
-hosts, using the extracted video ID (e.g. `i.ytimg.com/vi/<id>/hqdefault.jpg`),
-never by scraping pages. HTTPS only, no cookies, a size cap, re-encoded in an
-isolate, stored inside the encrypted vault, off by default and opt-in per site.
-This would mean adding network access, which version 1 doesn't have.
+Opt-in YouTube thumbnails are built into the `preview` flavor for internal
+testing; the `store` flavor doesn't include them. Images come only from
+`i.ytimg.com`, using the video ID; pages are never fetched. Requests are
+HTTPS only, with no cookies, a 2 MB cap and a 10 s timeout. Each image is
+re-encoded in an isolate and stored encrypted. Thumbnails are off by default
+and opt-in per site. More sites (Vimeo, Dailymotion, TikTok) are planned
+in `docs/thumbnails-plan.md`.
