@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:share_handler/share_handler.dart';
 
 import 'core/link_repository.dart';
+import 'core/url_tools.dart';
 import 'core/vault_store.dart';
 import 'thumbs/thumb_service.dart';
 
@@ -28,6 +30,24 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Text shared from other apps, waiting to be saved to the inbox.
   final List<String> pendingShares = [];
+
+  /// Page titles that came with [pendingShares], by shared text.
+  final Map<String, String> shareTitles = {};
+
+  /// Asks the Android side for the subject sent with a share; tests replace it.
+  Future<String?> Function(String text) shareSubject = _platformShareSubject;
+
+  static const _shareChannel = MethodChannel('linkvault/share');
+
+  static Future<String?> _platformShareSubject(String text) async {
+    try {
+      return await _shareChannel.invokeMethod<String>('takeTitle', text);
+    } on MissingPluginException {
+      return null; // iOS, tests and desktop: no subject channel.
+    } on PlatformException {
+      return null;
+    }
+  }
 
   /// Shown once after unlocking, when shared links were merged in.
   MergeReport? inboxReport;
@@ -66,6 +86,20 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     pendingShares.add(text);
     quickSaveOpen = true;
     notifyListeners();
+    _findTitle(media.content!, text);
+  }
+
+  Future<void> _findTitle(String raw, String text) async {
+    String? subject;
+    try {
+      subject = await shareSubject(raw.trim());
+    } on Object {
+      subject = null;
+    }
+    final title = sharedTitle(text, subject: subject);
+    if (title == null || !pendingShares.contains(text)) return;
+    shareTitles[text] = title;
+    notifyListeners();
   }
 
   /// The share screen stays up until the user leaves it, even once every
@@ -75,6 +109,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void closeQuickSave() {
     quickSaveOpen = false;
     pendingShares.clear();
+    shareTitles.clear();
     notifyListeners();
   }
 
@@ -135,6 +170,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     lock();
     await store.erase();
     pendingShares.clear();
+    shareTitles.clear();
     stage = Stage.needsSetup;
     notifyListeners();
   }
@@ -143,13 +179,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> saveShared(String text) async {
     // Always via the encrypted inbox; it is merged at the next unlock.
-    await store.addToInbox(text);
+    await store.addToInbox(text, title: shareTitles.remove(text) ?? sharedTitle(text));
     pendingShares.remove(text);
     notifyListeners();
   }
 
   void discardShared(String text) {
     pendingShares.remove(text);
+    shareTitles.remove(text);
     notifyListeners();
   }
 

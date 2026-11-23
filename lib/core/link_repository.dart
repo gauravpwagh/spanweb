@@ -44,13 +44,14 @@ class MergeReport {
 
 /// One link to merge in bulk.
 class IncomingLink {
-  IncomingLink(this.url, {DateTime? addedAt, Set<String>? tags, this.note})
+  IncomingLink(this.url, {DateTime? addedAt, Set<String>? tags, this.note, this.title})
       : addedAt = addedAt ?? DateTime.now(),
         tags = tags ?? {};
   final String url;
   final DateTime addedAt;
   final Set<String> tags;
   final String? note;
+  final String? title;
 }
 
 /// The unlocked vault: all links, kept in memory and saved encrypted after
@@ -127,6 +128,7 @@ class LinkRepository extends ChangeNotifier {
       if (!tags.every(l.tags.contains)) return false;
       if (q.isNotEmpty &&
           !l.cleanUrl.toLowerCase().contains(q) &&
+          !(l.title?.toLowerCase().contains(q) ?? false) &&
           !(l.note?.toLowerCase().contains(q) ?? false) &&
           !l.tags.any((t) => t.contains(q))) {
         return false;
@@ -160,11 +162,13 @@ class LinkRepository extends ChangeNotifier {
 
   /// Adds a link that passed [check]. Call only when there is no exact
   /// duplicate; possible duplicates are saved with a flag for review.
-  Future<LinkItem> add(String url, {Set<String> tags = const {}, String? note, DateTime? addedAt}) async {
+  Future<LinkItem> add(String url,
+      {Set<String> tags = const {}, String? note, String? title, DateTime? addedAt}) async {
     final c = check(url);
     if (c.invalid) throw ArgumentError('Not a valid link');
     if (c.exact != null) throw StateError('Already saved');
-    final item = _insert(IncomingLink(url, addedAt: addedAt, tags: tags, note: note), c);
+    final item =
+        _insert(IncomingLink(url, addedAt: addedAt, tags: tags, note: note, title: title), c);
     await _save();
     onAdded?.call([item], bulk: false);
     return item;
@@ -204,8 +208,10 @@ class LinkRepository extends ChangeNotifier {
     for (final e in entries) {
       final urls = extractUrls(e.text);
       if (urls.isEmpty) unreadable++;
+      // A title belongs to the link only when the share held just one.
+      final title = urls.length == 1 ? cleanTitle(e.title) : null;
       for (final u in urls) {
-        incoming.add(IncomingLink(u, addedAt: e.sharedAt));
+        incoming.add(IncomingLink(u, addedAt: e.sharedAt, title: title));
       }
     }
     final report = await merge(incoming);
@@ -227,6 +233,11 @@ class LinkRepository extends ChangeNotifier {
 
   Future<void> setNote(LinkItem item, String? note) async {
     item.note = (note == null || note.trim().isEmpty) ? null : note.trim();
+    await _save();
+  }
+
+  Future<void> setTitle(LinkItem item, String? title) async {
+    item.title = cleanTitle(title);
     await _save();
   }
 
@@ -328,6 +339,7 @@ class LinkRepository extends ChangeNotifier {
       url: c.parsed!.original,
       addedAt: inc.addedAt,
       tags: tags,
+      title: cleanTitle(inc.title),
       note: inc.note,
       possibleDuplicate: c.possible.isNotEmpty,
     );
@@ -341,6 +353,7 @@ class LinkRepository extends ChangeNotifier {
     final tags = inc.tags.map(normalizeTag).whereType<String>();
     existing.tags.addAll(tags);
     _data.tagLibrary.addAll(tags);
+    existing.title ??= cleanTitle(inc.title);
     if (inc.addedAt.isBefore(existing.addedAt)) {
       final i = _data.links.indexOf(existing);
       final replaced = LinkItem(
@@ -348,6 +361,7 @@ class LinkRepository extends ChangeNotifier {
         url: existing.url,
         addedAt: inc.addedAt,
         tags: existing.tags,
+        title: existing.title,
         note: existing.note ?? inc.note,
         possibleDuplicate: existing.possibleDuplicate,
       );

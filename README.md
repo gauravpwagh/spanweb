@@ -4,6 +4,9 @@ A private link collector for Android and iOS, built with Flutter.
 
 - Share a link to the app from any other app. **No PIN is needed to save**,
   and a saved link can't be read back until you unlock the app.
+- The page title that the sharing app sends along (Chrome, YouTube and
+  others on Android), or the words around the link, is kept as the link's
+  title. No network is used; titles can be edited and are searchable.
 - The app always opens on the PIN screen (6 digits).
 - Links are grouped by website (`m.youtube.com`, `youtu.be` → `youtube.com`;
   `news.bbc.co.uk` → `bbc.co.uk`).

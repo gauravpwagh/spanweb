@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
@@ -14,7 +15,29 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    /// Page titles sent with shared text (EXTRA_SUBJECT / EXTRA_TITLE), by
+    /// shared text. The share plugin passes only the text; Dart asks for the
+    /// title here. Kept in memory only, and only the last few.
+    private val sharedTitles = LinkedHashMap<String, String>()
+
+    private fun rememberTitle(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim() ?: return
+        val title = (intent.getStringExtra(Intent.EXTRA_SUBJECT)
+            ?: intent.getStringExtra(Intent.EXTRA_TITLE))?.trim()
+        if (title.isNullOrEmpty()) return
+        sharedTitles[text] = title
+        while (sharedTitles.size > 10) sharedTitles.remove(sharedTitles.keys.first())
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        // Before super, which hands the intent to the share plugin.
+        rememberTitle(intent)
+        super.onNewIntent(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        rememberTitle(intent)
         super.onCreate(savedInstanceState)
         // Blocks screenshots, screen recording and the app-switcher preview.
         // Debug builds skip it so the app can be screenshotted while testing.
@@ -27,6 +50,13 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "linkvault/share")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "takeTitle" -> result.success(sharedTitles.remove(call.arguments as String))
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "linkvault/clipboard")
             .setMethodCallHandler { call, result ->
                 val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

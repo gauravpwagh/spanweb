@@ -36,6 +36,7 @@ Map<String, Object?> _exportJson(List<LinkItem> links, List<String> tags) => {
           {
             'url': l.url,
             'addedAt': l.addedAt.toUtc().toIso8601String(),
+            if (l.title != null) 'title': l.title,
             'tags': l.tags.toList()..sort(),
             if (l.note != null) 'note': l.note,
           },
@@ -128,6 +129,7 @@ ReadyToImport _fromExportJson(Map<String, Object?> j) {
       addedAt: addedAt,
       tags: {for (final t in (raw['tags'] as List? ?? const [])) if (t is String) t},
       note: raw['note'] is String ? raw['note'] as String : null,
+      title: raw['title'] is String ? raw['title'] as String : null,
     ));
   }
   final tags = {

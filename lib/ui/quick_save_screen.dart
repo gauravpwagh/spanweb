@@ -50,6 +50,7 @@ class _QuickSaveScreenState extends State<QuickSaveScreen> {
   Widget _card(BuildContext context, String text) {
     final urls = extractUrls(text);
     final parsed = urls.map(parseLink).whereType<ParsedLink>().toList();
+    final title = widget.controller.shareTitles[text];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -59,13 +60,18 @@ class _QuickSaveScreenState extends State<QuickSaveScreen> {
             if (parsed.isEmpty)
               Text('No link found in the shared text.',
                   style: TextStyle(color: Theme.of(context).colorScheme.error))
-            else
+            else ...[
+              if (title != null) ...[
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 6),
+              ],
               for (final p in parsed) ...[
                 Text(p.group, style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 4),
                 Text(p.clean, maxLines: 4, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 8),
               ],
+            ],
             const SizedBox(height: 8),
             Text(
               'Saved links are encrypted and added to your groups the next time you unlock.',

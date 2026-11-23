@@ -1,6 +1,6 @@
 import 'url_tools.dart';
 
-/// One saved link. Only [url], [addedAt], [tags], [note] and
+/// One saved link. Only [url], [addedAt], [title], [tags], [note] and
 /// [possibleDuplicate] are stored; everything else is derived from [url] on
 /// load, so improving the URL rules later re-groups old links too.
 class LinkItem {
@@ -9,6 +9,7 @@ class LinkItem {
     required this.url,
     required this.addedAt,
     Set<String>? tags,
+    this.title,
     this.note,
     this.possibleDuplicate = false,
   })  : tags = tags ?? <String>{},
@@ -18,6 +19,9 @@ class LinkItem {
   final String url;
   final DateTime addedAt;
   final Set<String> tags;
+
+  /// The page title sent by the app the link was shared from, or typed in.
+  String? title;
   String? note;
   bool possibleDuplicate;
   final ParsedLink? parsed;
@@ -31,6 +35,7 @@ class LinkItem {
         'id': id,
         'url': url,
         'addedAt': addedAt.toUtc().toIso8601String(),
+        if (title != null && title!.isNotEmpty) 'title': title,
         'tags': tags.toList()..sort(),
         if (note != null && note!.isNotEmpty) 'note': note,
         if (possibleDuplicate) 'possibleDuplicate': true,
@@ -41,6 +46,7 @@ class LinkItem {
         url: j['url'] as String,
         addedAt: DateTime.parse(j['addedAt'] as String).toLocal(),
         tags: {for (final t in (j['tags'] as List? ?? const [])) t as String},
+        title: j['title'] as String?,
         note: j['note'] as String?,
         possibleDuplicate: j['possibleDuplicate'] == true,
       );

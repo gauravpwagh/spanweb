@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../core/link_repository.dart';
 import '../core/models.dart';
+import '../core/url_tools.dart';
 import '../thumbs/thumb_service.dart';
 import 'common.dart';
 import 'thumbnail_settings_screen.dart';
@@ -30,10 +31,12 @@ class _LinkSheet extends StatefulWidget {
 
 class _LinkSheetState extends State<_LinkSheet> {
   late final _note = TextEditingController(text: widget.item.note ?? '');
+  late final _title = TextEditingController(text: widget.item.title ?? '');
 
   @override
   void dispose() {
     _note.dispose();
+    _title.dispose();
     super.dispose();
   }
 
@@ -127,6 +130,15 @@ class _LinkSheetState extends State<_LinkSheet> {
               ),
             ],
             const SizedBox(height: 16),
+            TextField(
+              controller: _title,
+              decoration: const InputDecoration(labelText: 'Title', prefixIcon: Icon(Icons.title)),
+              maxLength: maxTitleLength,
+              maxLines: 2,
+              minLines: 1,
+              onChanged: (v) => widget.repo.setTitle(item, v),
+            ),
+            const SizedBox(height: 8),
             Text('Tags', style: theme.textTheme.titleSmall),
             const SizedBox(height: 4),
             TagEditor(

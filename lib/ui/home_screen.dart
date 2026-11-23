@@ -200,7 +200,7 @@ class _LinksViewState extends State<LinksView> {
                   Expanded(
                     child: TextField(
                       decoration: const InputDecoration(
-                        hintText: 'Search links, tags, notes',
+                        hintText: 'Search links, titles, tags, notes',
                         prefixIcon: Icon(Icons.search),
                         isDense: true,
                         border: OutlineInputBorder(),
@@ -285,10 +285,12 @@ class _LinkTile extends StatelessWidget {
     final t = thumbs;
     return ListTile(
       leading: t != null && t.allowed(item) ? LinkThumb(thumbs: t, item: item) : null,
-      title: Text(item.cleanUrl, maxLines: 2, overflow: TextOverflow.ellipsis),
+      title: Text(item.title ?? item.cleanUrl, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (item.title != null)
+            Text(item.cleanUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
           Text(
             [if (showGroup) item.group, formatDate(item.addedAt)].join(' · '),
             style: theme.textTheme.bodySmall,

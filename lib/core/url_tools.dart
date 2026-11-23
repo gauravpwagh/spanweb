@@ -106,6 +106,34 @@ List<String> extractUrls(String text) {
   return found;
 }
 
+const maxTitleLength = 200;
+
+/// Tidies a title: single spaces, no control characters, at most
+/// [maxTitleLength] characters. Null if nothing is left, or if it is only a link.
+String? cleanTitle(String? raw) {
+  if (raw == null) return null;
+  var t = raw.replaceAll(RegExp(r'[\x00-\x1F\x7F]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (t.isEmpty || RegExp(r'^https?://\S+$', caseSensitive: false).hasMatch(t)) return null;
+  if (t.length > maxTitleLength) t = '${t.substring(0, maxTitleLength - 1).trimRight()}…';
+  return t;
+}
+
+/// The title that came with a share: the subject the other app sent, or
+/// else the words around the link (for apps that share "Title https://…").
+/// Null when the text holds more than one link, since it isn't clear which
+/// link the words belong to.
+String? sharedTitle(String text, {String? subject}) {
+  final urls = extractUrls(text);
+  if (urls.length != 1) return null;
+  final fromSubject = cleanTitle(subject);
+  if (fromSubject != null) return fromSubject;
+  final rest = text.replaceFirst(urls.single, ' ');
+  // Separators apps put between the title and the link.
+  final trimmed = rest.replaceAll(RegExp(r'^[\s\-–—|:•·]+|[\s\-–—|:•·]+$'), '');
+  // A word or two ("see", "look") is chatter, not a title.
+  return trimmed.length < 8 ? null : cleanTitle(trimmed);
+}
+
 /// Parses one link. Returns null if it is not a usable http(s) URL.
 ParsedLink? parseLink(String input) {
   var raw = input.trim();

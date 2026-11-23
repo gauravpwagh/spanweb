@@ -61,9 +61,10 @@ class LockedOut extends UnlockResult {
 
 /// One link shared into the app while it was locked.
 class InboxEntry {
-  InboxEntry(this.file, this.text, this.sharedAt);
+  InboxEntry(this.file, this.text, this.sharedAt, {this.title});
   final File file;
   final String text;
+  final String? title;
   final DateTime sharedAt;
 }
 
@@ -186,11 +187,12 @@ class VaultStore {
 
   /// Saves shared text without the PIN. Nothing written here can be read back
   /// until the vault is unlocked.
-  Future<void> addToInbox(String text) async {
+  Future<void> addToInbox(String text, {String? title}) async {
     final keys = await _readKeys();
     final pub = base64Decode(keys['inboxPub'] as String);
     final payload = utf8.encode(jsonEncode({
       'text': text,
+      'title': ?title,
       'sharedAt': DateTime.now().toUtc().toIso8601String(),
     }));
     final sealed = await sealToPublicKey(pub, payload);
@@ -225,6 +227,7 @@ class VaultStore {
           f,
           j['text'] as String,
           DateTime.parse(j['sharedAt'] as String).toLocal(),
+          title: j['title'] is String ? j['title'] as String : null,
         ));
       } catch (_) {
         continue;
