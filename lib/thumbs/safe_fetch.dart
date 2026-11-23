@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-/// The only code in the app that uses the network. It downloads one image
-/// from an allowed host and refuses everything else.
+/// The only code in the app that uses the network. It downloads one image,
+/// one small JSON reply or the start of one web page from an allowed host,
+/// and refuses everything else.
 class FetchPolicy {
   const FetchPolicy({
     required this.allowedHosts,
@@ -14,6 +16,8 @@ class FetchPolicy {
     this.allowPrivateForTests = false,
   });
 
+  /// Exact host names; an entry starting with `.` also allows any host
+  /// ending in it (`.dmcdn.net` allows `s2.dmcdn.net`).
   final Set<String> allowedHosts;
   final int maxBytes;
 
@@ -38,6 +42,31 @@ const _imageTypes = {'image/jpeg', 'image/png', 'image/webp'};
 /// Downloads an image. Throws [FetchRefused] for anything outside the
 /// policy, and on timeouts or network errors.
 Future<Uint8List> safeFetchImage(Uri url, FetchPolicy policy) async {
+  final r = await _download(url, policy, accept: 'image/jpeg,image/png,image/webp', types: _imageTypes);
+  if (!_looksLike(r.type, r.bytes)) throw FetchRefused('content does not match ${r.type}');
+  return r.bytes;
+}
+
+/// Downloads text of one of [types], decoded as UTF-8. With [truncate],
+/// stops quietly after `maxBytes` (enough to read a page's head) instead of
+/// refusing a longer reply.
+Future<String> safeFetchText(
+  Uri url,
+  FetchPolicy policy, {
+  required Set<String> types,
+  bool truncate = false,
+}) async {
+  final r = await _download(url, policy, accept: types.join(','), types: types, truncate: truncate);
+  return utf8.decode(r.bytes, allowMalformed: true);
+}
+
+Future<({Uint8List bytes, String type})> _download(
+  Uri url,
+  FetchPolicy policy, {
+  required String accept,
+  required Set<String> types,
+  bool truncate = false,
+}) async {
   final client = HttpClient()
     ..userAgent = 'Mozilla/5.0'
     ..connectionTimeout = policy.timeout
@@ -51,7 +80,7 @@ Future<Uint8List> safeFetchImage(Uri url, FetchPolicy policy) async {
         : Socket.startConnect(address, uri.port);
   };
   try {
-    return await _fetch(client, url, policy).timeout(
+    return await _fetch(client, url, policy, accept, types, truncate).timeout(
       policy.timeout,
       onTimeout: () => throw FetchRefused('timed out'),
     );
@@ -64,7 +93,14 @@ Future<Uint8List> safeFetchImage(Uri url, FetchPolicy policy) async {
   }
 }
 
-Future<Uint8List> _fetch(HttpClient client, Uri url, FetchPolicy policy) async {
+Future<({Uint8List bytes, String type})> _fetch(
+  HttpClient client,
+  Uri url,
+  FetchPolicy policy,
+  String accept,
+  Set<String> types,
+  bool truncate,
+) async {
   var uri = url;
   for (var hop = 0;; hop++) {
     _checkUri(uri, policy);
@@ -73,7 +109,7 @@ Future<Uint8List> _fetch(HttpClient client, Uri url, FetchPolicy policy) async {
       ..followRedirects = false
       ..persistentConnection = false;
     req.headers
-      ..set(HttpHeaders.acceptHeader, 'image/jpeg,image/png,image/webp')
+      ..set(HttpHeaders.acceptHeader, accept)
       ..removeAll(HttpHeaders.refererHeader);
     final res = await req.close();
 
@@ -89,17 +125,24 @@ Future<Uint8List> _fetch(HttpClient client, Uri url, FetchPolicy policy) async {
       throw FetchRefused('status ${res.statusCode}');
     }
     final type = res.headers.contentType?.mimeType;
-    if (!_imageTypes.contains(type)) throw FetchRefused('not an image: $type');
-    if (res.contentLength > policy.maxBytes) throw FetchRefused('too large');
+    if (type == null || !types.contains(type)) {
+      await res.drain<void>().catchError((_) {});
+      throw FetchRefused('wrong type: $type');
+    }
+    if (!truncate && res.contentLength > policy.maxBytes) throw FetchRefused('too large');
 
     final out = BytesBuilder(copy: false);
     await for (final chunk in res) {
       out.add(chunk);
-      if (out.length > policy.maxBytes) throw FetchRefused('too large');
+      if (out.length > policy.maxBytes) {
+        if (!truncate) throw FetchRefused('too large');
+        break; // closing the client drops the rest
+      }
     }
     final bytes = out.takeBytes();
-    if (!_looksLike(type!, bytes)) throw FetchRefused('content does not match $type');
-    return bytes;
+    return (bytes: truncate && bytes.length > policy.maxBytes
+        ? Uint8List.sublistView(bytes, 0, policy.maxBytes)
+        : bytes, type: type);
   }
 }
 
@@ -107,9 +150,15 @@ void _checkUri(Uri uri, FetchPolicy p) {
   final schemeOk = uri.scheme == 'https' || (p.allowHttpForTests && uri.scheme == 'http');
   if (!schemeOk) throw FetchRefused('not https');
   if (uri.userInfo.isNotEmpty) throw FetchRefused('credentials in address');
-  if (!p.allowedHosts.contains(uri.host.toLowerCase())) {
+  if (!hostAllowed(uri.host, p.allowedHosts)) {
     throw FetchRefused('host not allowed: ${uri.host}');
   }
+}
+
+/// Whether [host] matches [allowed]: exactly, or by a `.suffix` entry.
+bool hostAllowed(String host, Set<String> allowed) {
+  final h = host.toLowerCase();
+  return allowed.contains(h) || allowed.any((a) => a.startsWith('.') && h.endsWith(a));
 }
 
 Future<InternetAddress> _checkedAddress(String host, FetchPolicy p) async {

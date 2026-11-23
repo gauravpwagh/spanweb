@@ -42,6 +42,27 @@ class MergeReport {
   }
 }
 
+/// What [LinkRepository.changeDomain] did.
+class DomainChange {
+  DomainChange(this.from, this.to);
+  final String from;
+  final String to;
+  int moved = 0;
+  int merged = 0;
+
+  /// Links in the group whose host isn't the domain itself, such as `youtu.be`
+  /// in the `youtube.com` group. They are left as they were.
+  int skipped = 0;
+
+  @override
+  String toString() {
+    final parts = ['$moved changed to $to'];
+    if (merged > 0) parts.add('$merged merged with links already saved');
+    if (skipped > 0) parts.add('$skipped left as they were');
+    return parts.join(', ');
+  }
+}
+
 /// One link to merge in bulk.
 class IncomingLink {
   IncomingLink(this.url, {DateTime? addedAt, Set<String>? tags, this.note, this.title})
@@ -69,6 +90,7 @@ class LinkRepository extends ChangeNotifier {
   final VaultData _data;
   final Map<String, LinkItem> _byCanonical = {};
   final Map<String, List<LinkItem>> _bySegment = {};
+  final Map<String, List<LinkItem>> _byPath = {};
   Future<void> _saving = Future.value();
   bool _closed = false;
 
@@ -144,20 +166,25 @@ class LinkRepository extends ChangeNotifier {
   int get possibleDuplicateCount => _data.links.where((l) => l.possibleDuplicate).length;
 
   AddCheck check(String url) {
-    final parsed = parseLink(url);
+    final parsed = parseLink(_applyMoves(url));
     if (parsed == null) return AddCheck(null, null, const []);
     final exact = _byCanonical[parsed.canonicalKey];
-    final possible = exact != null || parsed.lastSegment == null
+    final possible = exact != null
         ? const <LinkItem>[]
-        : List<LinkItem>.of(_bySegment[parsed.lastSegment] ?? const []);
+        : _similar(parsed.lastSegment, parsed.pathKey, null);
     return AddCheck(parsed, exact, possible);
   }
 
-  /// Other saved links that share this link's last part.
-  List<LinkItem> similarTo(LinkItem item) {
-    final seg = item.lastSegment;
-    if (seg == null) return const [];
-    return (_bySegment[seg] ?? const []).where((l) => l.id != item.id).toList();
+  /// Other saved links that share this link's last part, or everything
+  /// after the domain.
+  List<LinkItem> similarTo(LinkItem item) => _similar(item.lastSegment, item.pathKey, item.id);
+
+  List<LinkItem> _similar(String? segment, String? pathKey, String? exceptId) {
+    final seen = <String>{?exceptId};
+    return [
+      for (final l in [...?_bySegment[segment], ...?_byPath[pathKey]])
+        if (seen.add(l.id)) l,
+    ];
   }
 
   /// Adds a link that passed [check]. Call only when there is no exact
@@ -239,6 +266,82 @@ class LinkRepository extends ChangeNotifier {
   Future<void> setTitle(LinkItem item, String? title) async {
     item.title = cleanTitle(title);
     await _save();
+  }
+
+  /// The saved link with this canonical key, if any.
+  LinkItem? byCanonicalKey(String key) => _byCanonical[key];
+
+  /// Websites that moved, old group -> new domain.
+  Map<String, String> get domainMoves => Map.unmodifiable(_data.domainMoves);
+
+  /// Changes every link in [group] to [newDomain], keeping subdomains, path
+  /// and query as they were. Links that become the same as one already saved
+  /// are merged into it. With [remember], links saved or imported later from
+  /// the old domain are changed too.
+  Future<DomainChange> changeDomain(String group, String newDomain, {bool remember = true}) async {
+    final to = newDomain.toLowerCase();
+    final result = DomainChange(group, to);
+    if (groupForHost(to) == group && to == group) return result;
+    final moving = <LinkItem>[];
+    for (final l in _data.links.where((l) => l.group == group).toList()) {
+      final url = moveUrlDomain(l.url, group, to);
+      if (url == null || parseLink(url) == null) {
+        result.skipped++;
+        continue;
+      }
+      moving.add(LinkItem(
+        id: l.id,
+        url: url,
+        addedAt: l.addedAt,
+        tags: l.tags,
+        title: l.title,
+        note: l.note,
+        possibleDuplicate: l.possibleDuplicate,
+      ));
+      _data.links.remove(l);
+    }
+    _reindex();
+    for (final m in moving) {
+      final existing = _byCanonical[m.canonicalKey];
+      if (existing != null) {
+        _mergeInto(existing, IncomingLink(m.url,
+            addedAt: m.addedAt, tags: m.tags, note: m.note, title: m.title));
+        result.merged++;
+      } else {
+        _data.links.add(m);
+        _index(m);
+        result.moved++;
+      }
+    }
+    if (remember) _rememberMove(group, to);
+    await _save();
+    return result;
+  }
+
+  /// Stops changing links from [oldGroup] automatically.
+  Future<void> forgetDomainMove(String oldGroup) async {
+    if (_data.domainMoves.remove(oldGroup) != null) await _save();
+  }
+
+  void _rememberMove(String from, String to) {
+    final toGroup = groupForHost(to);
+    final moves = _data.domainMoves;
+    // Earlier moves that led to the old domain now lead to the new one.
+    for (final k in moves.keys.toList()) {
+      if (groupForHost(moves[k]!) == from) moves[k] = to;
+    }
+    moves[from] = to;
+    // The new domain is in use again, so it must not be moved away.
+    moves.remove(toGroup);
+    moves.removeWhere((k, v) => groupForHost(v) == k);
+  }
+
+  String _applyMoves(String url) {
+    if (_data.domainMoves.isEmpty) return url;
+    final p = parseLink(url);
+    final to = p == null ? null : _data.domainMoves[p.group];
+    if (to == null) return url;
+    return moveUrlDomain(p!.original, p.group, to) ?? url;
   }
 
   Future<void> clearPossibleDuplicate(LinkItem item) async {
@@ -375,6 +478,7 @@ class LinkRepository extends ChangeNotifier {
   void _reindex() {
     _byCanonical.clear();
     _bySegment.clear();
+    _byPath.clear();
     for (final l in _data.links) {
       _index(l);
     }
@@ -384,6 +488,8 @@ class LinkRepository extends ChangeNotifier {
     _byCanonical.putIfAbsent(l.canonicalKey, () => l);
     final seg = l.lastSegment;
     if (seg != null) (_bySegment[seg] ??= []).add(l);
+    final path = l.pathKey;
+    if (path != null) (_byPath[path] ??= []).add(l);
   }
 
   static final _rand = Random.secure();

@@ -30,6 +30,7 @@ class LinkItem {
   String get group => parsed?.group ?? 'other';
   String get canonicalKey => parsed?.canonicalKey ?? 'raw:$url';
   String? get lastSegment => parsed?.lastSegment;
+  String? get pathKey => parsed?.pathKey;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -91,10 +92,12 @@ class VaultData {
     Set<String>? tagLibrary,
     ThumbSettings? thumbSettings,
     Map<String, ThumbStatus>? thumbs,
+    Map<String, String>? domainMoves,
   })  : links = links ?? [],
         tagLibrary = tagLibrary ?? <String>{},
         thumbSettings = thumbSettings ?? ThumbSettings(),
-        thumbs = thumbs ?? {};
+        thumbs = thumbs ?? {},
+        domainMoves = domainMoves ?? {};
 
   static const version = 1;
   final List<LinkItem> links;
@@ -109,12 +112,17 @@ class VaultData {
   /// separate encrypted files.
   final Map<String, ThumbStatus> thumbs;
 
+  /// Websites that moved: old group -> new domain. Links saved or imported
+  /// later from the old domain are changed to the new one.
+  final Map<String, String> domainMoves;
+
   Map<String, Object?> toJson() => {
         'version': version,
         'links': links.map((l) => l.toJson()).toList(),
         'tags': tagLibrary.toList()..sort(),
         'thumbSettings': thumbSettings.toJson(),
         if (thumbs.isNotEmpty) 'thumbs': {for (final e in thumbs.entries) e.key: e.value.name},
+        if (domainMoves.isNotEmpty) 'domainMoves': domainMoves,
       };
 
   factory VaultData.fromJson(Map<String, Object?> j) => VaultData(
@@ -127,6 +135,10 @@ class VaultData {
         thumbs: {
           for (final e in ((j['thumbs'] as Map?) ?? const {}).entries)
             e.key as String: ?ThumbStatus.values.asNameMap()[e.value],
+        },
+        domainMoves: {
+          for (final e in ((j['domainMoves'] as Map?) ?? const {}).entries)
+            if (e.key is String && e.value is String) e.key as String: e.value as String,
         },
       );
 }

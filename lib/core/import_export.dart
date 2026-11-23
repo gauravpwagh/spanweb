@@ -144,8 +144,10 @@ ReadyToImport _fromExportJson(Map<String, Object?> j) {
     LinkRepository repo, List<IncomingLink> links) {
   var n = 0, d = 0, p = 0, inv = 0;
   final seen = <String>{};
-  // Last parts of links earlier in this file, which the import also checks.
+  // Last parts and paths of links earlier in this file, which the import
+  // also checks.
   final seenSegments = <String>{};
+  final seenPaths = <String>{};
   for (final l in links) {
     final c = repo.check(l.url);
     if (c.invalid) {
@@ -155,7 +157,11 @@ ReadyToImport _fromExportJson(Map<String, Object?> j) {
     } else {
       n++;
       final seg = c.parsed!.lastSegment;
-      final inFile = seg != null && !seenSegments.add(seg);
+      final path = c.parsed!.pathKey;
+      // Both sets are updated, so no short-circuit here.
+      final segSeen = seg != null && !seenSegments.add(seg);
+      final pathSeen = path != null && !seenPaths.add(path);
+      final inFile = segSeen || pathSeen;
       if (c.possible.isNotEmpty || inFile) p++;
     }
   }

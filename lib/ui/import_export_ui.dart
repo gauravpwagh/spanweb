@@ -162,16 +162,18 @@ Future<void> runImport(BuildContext context, AppController c) async {
   final report = await repo.merge(ready.links, bulk: true);
   if (context.mounted) showMessage(context, 'Import: $report');
 
-  // Preview edition: imports never fetch thumbnails without asking.
+  // Preview edition: imports never fetch titles or thumbnails without asking.
   final thumbs = c.thumbs;
   final missing = thumbs?.takeBulkAdded() ?? const [];
   if (thumbs == null || missing.isEmpty || !context.mounted) return;
   final load = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(missing.length == 1 ? 'Load 1 thumbnail?' : 'Load ${missing.length} thumbnails?'),
-      content: const Text('They are downloaded one at a time, a few seconds apart, '
-          'while the app is unlocked.'),
+      title: Text(missing.length == 1
+          ? 'Load the title and thumbnail for 1 video?'
+          : 'Load titles and thumbnails for ${missing.length} videos?'),
+      content: const Text('They are loaded one at a time, a few seconds apart, '
+          'while the app is unlocked. Titles you already have are kept.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Load')),

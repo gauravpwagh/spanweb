@@ -18,6 +18,9 @@ import 'vault_test.dart' show MemorySecrets, fastKdf;
 
 Uint8List jpeg(int w, int h) => img.encodeJpg(img.Image(width: w, height: h));
 
+/// No oEmbed service in tests: every request fails.
+Future<String> noInfo(Uri u) async => throw FetchRefused('offline');
+
 void main() {
   group('thumb source', () {
     test('every YouTube link form gives the same image address', () {
@@ -27,16 +30,29 @@ void main() {
         'https://m.youtube.com/watch?v=$id&feature=share',
         'https://www.youtube.com/shorts/$id',
       ]) {
-        final r = thumbRequestFor(parseLink(u)!.canonicalKey)!;
-        expect(r.url.toString(), 'https://i.ytimg.com/vi/$id/mqdefault.jpg');
+        final r = videoSourceFor(parseLink(u)!.canonicalKey)!;
+        expect(r.directThumb.toString(), 'https://i.ytimg.com/vi/$id/mqdefault.jpg');
         expect(r.site, 'youtube.com');
-        expect(thumbHosts, contains(r.url.host));
+        expect(r.oembed.host, 'www.youtube.com');
+        expect(r.oembed.queryParameters['url'], 'https://www.youtube.com/watch?v=$id');
+        expect(thumbHosts, contains(r.directThumb!.host));
       }
     });
 
-    test('other sites and plain pages get nothing', () {
-      for (final u in ['https://vimeo.com/76979871', 'https://bbc.co.uk/news/x', 'https://www.youtube.com/']) {
-        expect(thumbRequestFor(parseLink(u)!.canonicalKey), isNull, reason: u);
+    test('Vimeo and Dailymotion use their oEmbed services', () {
+      final v = videoSourceFor(parseLink('https://vimeo.com/76979871')!.canonicalKey)!;
+      expect(v.oembed.toString(), 'https://vimeo.com/api/oembed.json?url=https%3A%2F%2Fvimeo.com%2F76979871');
+      expect(v.directThumb, isNull);
+      final d = videoSourceFor(parseLink('https://www.dailymotion.com/video/x7tgad0_some-slug')!.canonicalKey)!;
+      expect(d.oembed.queryParameters['url'], 'https://www.dailymotion.com/video/x7tgad0');
+      for (final s in [v, d]) {
+        expect(oembedHosts, contains(s.oembed.host));
+      }
+    });
+
+    test('plain pages get nothing', () {
+      for (final u in ['https://bbc.co.uk/news/x', 'https://www.youtube.com/', 'https://x.com/a/status/1']) {
+        expect(videoSourceFor(parseLink(u)!.canonicalKey), isNull, reason: u);
       }
     });
   });
@@ -138,12 +154,39 @@ void main() {
     });
 
     test('refuses non-images, disguised content, oversized and slow responses', () async {
-      expect(await refusal('/html'), startsWith('not an image'));
+      expect(await refusal('/html'), startsWith('wrong type'));
       expect(await refusal('/fake.jpg'), startsWith('content does not match'));
       expect(await refusal('/big.jpg'), 'too large');
       expect(await refusal('/big-chunked.jpg'), 'too large');
       expect(await refusal('/slow.jpg'), 'timed out');
       expect(await refusal('/missing.jpg'), 'status 404');
+    });
+
+    test('text: page start is read and cut quietly, JSON over the cap is refused', () async {
+      handlers['/page'] = (r) async {
+        r.response.headers.contentType = ContentType.html;
+        r.response.write('<html><head><title>Hello</title></head>${'x' * 100000}');
+      };
+      handlers['/data'] = (r) async {
+        r.response.headers.contentType = ContentType.json;
+        r.response.write('{"title":"${'y' * 100000}"}');
+      };
+      const p = FetchPolicy(
+        allowedHosts: {'.0.0.1', 'example.org'},
+        maxBytes: 4096,
+        allowHttpForTests: true,
+        allowPrivateForTests: true,
+      );
+      final page = await safeFetchText(base.resolve('/page'), p, types: {'text/html'}, truncate: true);
+      expect(page.length, 4096);
+      expect(page, startsWith('<html><head><title>Hello'));
+      await expectLater(safeFetchText(base.resolve('/data'), p, types: {'application/json'}),
+          throwsA(isA<FetchRefused>().having((e) => e.reason, 'reason', 'too large')));
+      await expectLater(safeFetchText(base.resolve('/page'), p, types: {'application/json'}),
+          throwsA(isA<FetchRefused>()));
+      expect(hostAllowed('s2.dmcdn.net', {'.dmcdn.net'}), isTrue);
+      expect(hostAllowed('dmcdn.net.evil.com', {'.dmcdn.net'}), isFalse);
+      expect(hostAllowed('evildmcdn.net', {'.dmcdn.net'}), isFalse);
     });
   });
 
@@ -236,7 +279,7 @@ void main() {
 
     test('nothing is fetched until the user turns thumbnails on for the site', () async {
       final fetched = <Uri>[];
-      final svc = ThumbService(repo, fetch: (u) async {
+      final svc = ThumbService(repo, info: noInfo, fetch: (u) async {
         fetched.add(u);
         return jpeg(640, 360);
       }, pause: () => Duration.zero);
@@ -254,7 +297,7 @@ void main() {
 
     test('manual and automatic loading, imports wait for a yes', () async {
       final fetched = <Uri>[];
-      final svc = ThumbService(repo, fetch: (u) async {
+      final svc = ThumbService(repo, info: noInfo, fetch: (u) async {
         fetched.add(u);
         return jpeg(640, 360);
       }, pause: () => Duration.zero);
@@ -282,7 +325,7 @@ void main() {
 
     test('a failed or unsafe image is recorded, not retried automatically', () async {
       var calls = 0;
-      final svc = ThumbService(repo, fetch: (u) async {
+      final svc = ThumbService(repo, info: noInfo, fetch: (u) async {
         calls++;
         return Uint8List.fromList(utf8.encode('<html>'));
       }, pause: () => Duration.zero);
@@ -300,7 +343,7 @@ void main() {
 
     test('locking mid-download stores nothing', () async {
       final gate = Completer<Uint8List>();
-      final svc = ThumbService(repo, fetch: (u) => gate.future, pause: () => Duration.zero);
+      final svc = ThumbService(repo, info: noInfo, fetch: (u) => gate.future, pause: () => Duration.zero);
       await repo.updateThumbSettings((s) => s
         ..enabled = true
         ..sites.add('youtube.com'));

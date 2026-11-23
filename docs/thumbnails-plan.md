@@ -1,6 +1,7 @@
 # Plan: video thumbnails (version 2)
 
-**Status:** Phase 1 (YouTube) is built in the `preview` flavor, for internal
+**Status:** Phases 1 and 2 (YouTube, Vimeo, Dailymotion via oEmbed, plus a
+tap-to-fetch page title for other links) are built in the `preview` flavor, for internal
 testing only. The `store` flavor is unchanged and has no network access.
 
 Goal: show a small thumbnail next to video links, without scraping pages and

@@ -5,7 +5,7 @@ import '../thumbs/thumb_service.dart';
 import '../thumbs/thumb_source.dart';
 import 'common.dart';
 
-/// Opt-in for video thumbnails (preview edition only).
+/// Opt-in for video titles and thumbnails (preview edition only).
 class ThumbnailSettingsScreen extends StatelessWidget {
   const ThumbnailSettingsScreen({super.key, required this.thumbs});
   final ThumbService thumbs;
@@ -16,12 +16,13 @@ class ThumbnailSettingsScreen extends StatelessWidget {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Turn on thumbnails?'),
+          title: const Text('Turn on video info?'),
           content: const Text(
-            'To show a thumbnail, Link Vault asks the video site for the image. '
-            'That site sees the video ID and your IP address.\n\n'
-            'Only the image is downloaded, never the page. Thumbnails are stored '
-            'encrypted with your links. Nothing is sent anywhere else.',
+            "To get a title and thumbnail, Link Vault asks the video site's "
+            'official info service (oEmbed) about the video. That site sees '
+            'which video you asked about and your IP address.\n\n'
+            'The video page itself is never loaded. Titles and thumbnails are '
+            'stored encrypted with your links. Nothing is sent anywhere else.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -40,7 +41,7 @@ class ThumbnailSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final repo = thumbs.repo;
     return Scaffold(
-      appBar: AppBar(title: const Text('Video thumbnails')),
+      appBar: AppBar(title: const Text('Video titles & thumbnails')),
       body: ListenableBuilder(
         listenable: Listenable.merge([repo, thumbs]),
         builder: (context, _) {
@@ -54,8 +55,8 @@ class ThumbnailSettingsScreen extends StatelessWidget {
                 child: Text('Preview feature, for internal testing. Off by default.'),
               ),
               SwitchListTile(
-                title: const Text('Show video thumbnails'),
-                subtitle: const Text('Downloads only the image, never the page'),
+                title: const Text('Load video titles and thumbnails'),
+                subtitle: const Text("From the site's official info service, never the page"),
                 value: s.enabled,
                 onChanged: (v) => _setEnabled(context, v),
               ),
@@ -65,7 +66,7 @@ class ThumbnailSettingsScreen extends StatelessWidget {
                 for (final e in thumbSites.entries)
                   SwitchListTile(
                     title: Text(e.value),
-                    subtitle: Text('${e.value} sees the video ID and your IP address'),
+                    subtitle: Text('${e.value} sees which videos you load and your IP address'),
                     value: s.sites.contains(e.key),
                     onChanged: (v) => repo.updateThumbSettings(
                       (s) => v ? s.sites.add(e.key) : s.sites.remove(e.key),
@@ -80,7 +81,7 @@ class ThumbnailSettingsScreen extends StatelessWidget {
                     children: [
                       RadioListTile(
                         value: false,
-                        title: Text('Only when I tap "Load thumbnail"'),
+                        title: Text('Only when I tap "Load title and thumbnail"'),
                       ),
                       RadioListTile(
                         value: true,
@@ -94,20 +95,20 @@ class ThumbnailSettingsScreen extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.download_outlined),
                   title: Text(missing.isEmpty
-                      ? 'All allowed links have thumbnails'
-                      : 'Load thumbnails for ${missing.length} saved '
+                      ? 'All allowed links are loaded'
+                      : 'Load titles and thumbnails for ${missing.length} saved '
                           '${missing.length == 1 ? 'link' : 'links'}'),
                   subtitle: const Text('One at a time, a few seconds apart'),
                   enabled: missing.isNotEmpty,
                   onTap: () {
                     thumbs.request(missing);
-                    showMessage(context, 'Loading ${missing.length} thumbnails');
+                    showMessage(context, 'Loading ${missing.length} ${missing.length == 1 ? 'link' : 'links'}');
                   },
                 ),
                 if (failed > 0)
                   ListTile(
                     leading: const Icon(Icons.refresh),
-                    title: Text('Try $failed failed ${failed == 1 ? 'thumbnail' : 'thumbnails'} again'),
+                    title: Text('Try $failed failed ${failed == 1 ? 'link' : 'links'} again'),
                     onTap: () => repo.clearThumbFailures(),
                   ),
               ],

@@ -19,9 +19,14 @@ A private link collector for Android and iOS, built with Flutter.
     are matched across URL forms (`youtu.be/ID` = `youtube.com/watch?v=ID` =
     `/shorts/ID`; X/Twitter, Reddit, Instagram, TikTok, Vimeo). The link is
     not added twice.
-  - **Possible duplicate**: the last meaningful part of the link (slug or ID)
-    matches a link already saved on any website. You're warned, and the link
-    is flagged for review.
+  - **Possible duplicate**: the last meaningful part of the link (slug or ID),
+    or everything after the domain (path and query), matches a link already
+    saved on any website. You're warned, and the link is flagged for review.
+- **Change domain**: when a website moves to a new domain, open it (or
+  long-press it) in Websites and choose Change domain. Every link keeps its
+  path and query; links that become identical are merged. Optionally, links
+  saved or imported later from the old domain are changed too (see the menu's
+  Domain changes to stop that).
 - Links are **never opened** by the app: you can only copy them. The
   clipboard clears after 60 s.
 - Import / export: encrypted file (password), plain JSON, or plain text
@@ -119,12 +124,22 @@ separate app extension target, which can only be added in Xcode:
 On iOS, the shared text waits briefly in the App Group container until the
 main app opens and seals it into the encrypted inbox.
 
-## Thumbnails (preview edition only)
+## Titles and thumbnails (preview edition only)
 
-Opt-in YouTube thumbnails are built into the `preview` flavor for internal
-testing; the `store` flavor doesn't include them. Images come only from
-`i.ytimg.com`, using the video ID; pages are never fetched. Requests are
-HTTPS only, with no cookies, a 2 MB cap and a 10 s timeout. Each image is
-re-encoded in an isolate and stored encrypted. Thumbnails are off by default
-and opt-in per site. More sites (Vimeo, Dailymotion, TikTok) are planned
-in `docs/thumbnails-plan.md`.
+Built into the `preview` flavor for internal testing; the `store` flavor has
+no network access and doesn't include them.
+
+- **Video sites** (YouTube, Vimeo, Dailymotion): off by default, opt-in per
+  site. The title and thumbnail come from each site's official oEmbed
+  service, asked about the video ID; the video page is never loaded. YouTube
+  thumbnails come straight from `i.ytimg.com`. Thumbnails are accepted only
+  from each site's own image hosts. A title you already have is never replaced.
+- **Any other link**: a "Fetch title from <site>" button in link details asks
+  that website for the start of the page (256 KB at most) and reads only its
+  `og:title` or `<title>`. Only on a tap, one link at a time; redirects must
+  stay on the same website, and no images are taken from pages.
+- All requests are HTTPS only, with no cookies or referrer, size caps and a
+  10 s timeout, and refuse private network addresses. Images are re-encoded
+  in an isolate; titles and images are stored encrypted. TikTok is left out
+  because it isn't reachable in India.
+- Details: `docs/thumbnails-plan.md`.

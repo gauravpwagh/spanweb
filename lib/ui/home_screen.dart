@@ -4,6 +4,7 @@ import '../app_controller.dart';
 import '../core/link_repository.dart';
 import '../core/models.dart';
 import 'common.dart';
+import 'domain_screens.dart';
 import 'import_export_ui.dart';
 import 'link_sheets.dart';
 import '../thumbs/thumb_service.dart';
@@ -68,6 +69,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   case 'pin':
                     await Navigator.push(context,
                         MaterialPageRoute(builder: (_) => ChangePinScreen(controller: c)));
+                  case 'domains':
+                    await Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => DomainMovesScreen(repo: repo)));
                   case 'thumbs':
                     await Navigator.push(context,
                         MaterialPageRoute(builder: (_) => ThumbnailSettingsScreen(thumbs: c.thumbs!)));
@@ -77,8 +81,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 const PopupMenuItem(value: 'import', child: Text('Import links')),
                 const PopupMenuItem(value: 'export', child: Text('Export links')),
                 const PopupMenuItem(value: 'tags', child: Text('Manage tags')),
+                if (repo.domainMoves.isNotEmpty)
+                  const PopupMenuItem(value: 'domains', child: Text('Domain changes')),
                 if (c.thumbs != null)
-                  const PopupMenuItem(value: 'thumbs', child: Text('Video thumbnails')),
+                  const PopupMenuItem(value: 'thumbs', child: Text('Video titles & thumbnails')),
                 const PopupMenuItem(value: 'pin', child: Text('Change PIN')),
               ],
             ),
@@ -123,11 +129,26 @@ class _GroupsTab extends StatelessWidget {
               title: Text(g.group),
               subtitle: Text('Last added ${formatDate(g.latest)}'),
               trailing: Text('${g.count}', style: Theme.of(context).textTheme.titleMedium),
+              onLongPress: () => showChangeDomainDialog(context, repo, g.group),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: Text(g.group)),
+                  builder: (ctx) => Scaffold(
+                    appBar: AppBar(
+                      title: Text(g.group),
+                      actions: [
+                        IconButton(
+                          tooltip: 'Change domain',
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: () async {
+                            // The links leave this group, so go back to the list.
+                            if (await showChangeDomainDialog(ctx, repo, g.group) && ctx.mounted) {
+                              Navigator.pop(ctx);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
                     body: LinksView(repo: repo, group: g.group, thumbs: thumbs),
                   ),
                 ),

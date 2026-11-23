@@ -67,6 +67,7 @@ class ParsedLink {
     required this.group,
     required this.canonicalKey,
     required this.lastSegment,
+    required this.pathKey,
   });
 
   /// The URL as it was given (trimmed).
@@ -87,6 +88,12 @@ class ParsedLink {
   /// The identifying last part of the link, used for possible-duplicate
   /// checks across all websites. Null when the link has none worth comparing.
   final String? lastSegment;
+
+  /// Everything after the domain: path and kept query, lowercased. Two links
+  /// on different domains with the same path key are possible duplicates
+  /// (mirrors, a site that moved). Null for a site's home page and for links
+  /// with a site-specific ID.
+  final String? pathKey;
 }
 
 /// Pulls every http(s) link out of shared text such as
@@ -188,6 +195,7 @@ ParsedLink? parseLink(String input) {
 
   final String canonicalKey;
   final String? lastSegment;
+  String? pathKey;
   if (siteId != null) {
     canonicalKey = siteId;
     lastSegment = siteId.substring(siteId.indexOf(':') + 1).toLowerCase();
@@ -200,6 +208,9 @@ ParsedLink? parseLink(String input) {
     final port = uri.hasPort && !_isDefaultPort(scheme, uri.port) ? ':${uri.port}' : '';
     canonicalKey = 'url:$host$port/$path${sorted.isEmpty ? '' : '?${_encodeQuery(sorted)}'}';
     lastSegment = _meaningfulLastSegment(segments);
+    if (path.isNotEmpty) {
+      pathKey = '/$path${sorted.isEmpty ? '' : '?${_encodeQuery(sorted)}'}'.toLowerCase();
+    }
   }
 
   return ParsedLink._(
@@ -209,6 +220,7 @@ ParsedLink? parseLink(String input) {
     group: group,
     canonicalKey: canonicalKey,
     lastSegment: lastSegment,
+    pathKey: pathKey,
   );
 }
 
@@ -325,4 +337,42 @@ String? _meaningfulLastSegment(List<String> segments) {
     return s;
   }
   return null;
+}
+
+/// Reads a domain the user typed ("new-site.org", "https://www.new-site.org/")
+/// and returns the bare host, or null if it isn't a usable domain.
+String? parseDomainInput(String raw) {
+  final p = parseLink(raw.trim());
+  if (p == null) return null;
+  final uri = Uri.parse(p.clean);
+  if (uri.host.isEmpty || !uri.host.contains('.') || _ipv4.hasMatch(uri.host)) return null;
+  return normalizeHost(uri.host);
+}
+
+final _hostInUrl = RegExp(r'^((?:[a-z][a-z0-9+.-]*://)?(?:[^/?#@]*@)?)([^/?#:]+)', caseSensitive: false);
+
+/// Swaps the domain [from] for [to] in [url], keeping any subdomain and
+/// everything after the host exactly as it was:
+/// `https://www.old.com/a?b=1` -> `https://www.new.org/a?b=1`.
+/// Null when the link's host isn't [from] or one of its subdomains.
+String? moveUrlDomain(String url, String from, String to) {
+  final m = _hostInUrl.firstMatch(url.trim());
+  if (m == null) return null;
+  var host = m.group(2)!.toLowerCase();
+  if (host.endsWith('.')) host = host.substring(0, host.length - 1);
+  final String newHost;
+  if (host == from) {
+    newHost = to;
+  } else if (host.endsWith('.$from')) {
+    final sub = host.substring(0, host.length - from.length - 1);
+    // Don't double up: "www.old.com" -> "www.new.org", but a target that
+    // already names a subdomain ("blog.new.org") replaces www./m. only.
+    final isPrefixOnly = _hostPrefixes.contains('$sub.');
+    newHost = isPrefixOnly && to.split('.').length > groupForHost(to).split('.').length
+        ? to
+        : '$sub.$to';
+  } else {
+    return null;
+  }
+  return '${m.group(1)}$newHost${url.trim().substring(m.end)}';
 }

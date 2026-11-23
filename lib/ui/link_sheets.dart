@@ -107,7 +107,7 @@ class _LinkSheetState extends State<_LinkSheet> {
                     children: [
                       Text('Possible duplicate', style: theme.textTheme.titleSmall),
                       const SizedBox(height: 4),
-                      Text('Same last part ("${item.lastSegment}") as:'),
+                      const Text('Same last part, or same address after the domain, as:'),
                       for (final s in similar)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
@@ -138,6 +138,8 @@ class _LinkSheetState extends State<_LinkSheet> {
               minLines: 1,
               onChanged: (v) => widget.repo.setTitle(item, v),
             ),
+            if (widget.thumbs case final t? when !t.allowed(item))
+              _PageTitleButton(thumbs: t, item: item, onTitle: (s) => _title.text = s),
             const SizedBox(height: 8),
             Text('Tags', style: theme.textTheme.titleSmall),
             const SizedBox(height: 4),
@@ -241,7 +243,7 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('The last part "${c.parsed!.lastSegment}" matches:'),
+              const Text('Same last part, or same address after the domain, as:'),
               for (final p in c.possible.take(5))
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
@@ -310,6 +312,42 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
   }
 }
 
+/// Preview edition: asks the link's website for its title, only on a tap.
+class _PageTitleButton extends StatelessWidget {
+  const _PageTitleButton({required this.thumbs, required this.item, required this.onTitle});
+  final ThumbService thumbs;
+  final LinkItem item;
+  final void Function(String title) onTitle;
+
+  Future<void> _fetch(BuildContext context) async {
+    final title = await thumbs.fetchPageTitle(item);
+    if (!context.mounted) return;
+    if (title == null) {
+      showMessage(context, 'No title found on ${item.parsed?.host ?? 'the website'}');
+    } else {
+      onTitle(title);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: thumbs,
+        builder: (context, _) {
+          final busy = thumbs.isFetchingPageTitle(item);
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: busy ? null : () => _fetch(context),
+              icon: busy
+                  ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.travel_explore),
+              label: Text('Fetch title from ${item.parsed?.host ?? 'website'}'),
+            ),
+          );
+        },
+      );
+}
+
 /// Thumbnail and its "Load" button in the link details (preview edition).
 class _ThumbSection extends StatelessWidget {
   const _ThumbSection({required this.thumbs, required this.item});
@@ -327,7 +365,7 @@ class _ThumbSection extends StatelessWidget {
             action = const Row(children: [
               SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
               SizedBox(width: 8),
-              Text('Loading thumbnail...'),
+              Text('Loading title and thumbnail...'),
             ]);
           } else if (status == ThumbStatus.ok) {
             action = const SizedBox.shrink();
@@ -336,8 +374,8 @@ class _ThumbSection extends StatelessWidget {
               onPressed: () => thumbs.request([item], first: true),
               icon: const Icon(Icons.image_outlined),
               label: Text(status == ThumbStatus.failed
-                  ? 'Could not load thumbnail. Try again'
-                  : 'Load thumbnail'),
+                  ? 'Could not load. Try again'
+                  : 'Load title and thumbnail'),
             );
           }
           return Padding(

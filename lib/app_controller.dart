@@ -113,11 +113,31 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// A link was shared before any PIN was chosen, so there is nowhere to
+  /// save it yet. Go to PIN setup and keep the shares; [setup] saves them.
+  void setUpFirst() {
+    quickSaveOpen = false;
+    notifyListeners();
+  }
+
   // --- PIN ---
 
   Future<void> setup(String pin) async {
     _open(await store.setup(pin));
     await _finishUnlock();
+    // Links shared before the PIN existed go straight into the new vault.
+    final r = repo;
+    if (r == null || pendingShares.isEmpty) return;
+    final incoming = <IncomingLink>[];
+    for (final text in pendingShares) {
+      final urls = extractUrls(text);
+      final title = urls.length == 1 ? (shareTitles[text] ?? sharedTitle(text)) : null;
+      incoming.addAll(urls.map((u) => IncomingLink(u, title: title)));
+    }
+    pendingShares.clear();
+    shareTitles.clear();
+    inboxReport = await r.merge(incoming);
+    notifyListeners();
   }
 
   Future<UnlockResult> unlock(String pin) async {

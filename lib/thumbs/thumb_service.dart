@@ -7,6 +7,7 @@ import 'package:flutter/services.dart' show appFlavor;
 
 import '../core/link_repository.dart';
 import '../core/models.dart';
+import 'link_info.dart';
 import 'safe_fetch.dart';
 import 'sanitize.dart';
 import 'thumb_source.dart';
@@ -17,8 +18,27 @@ bool get thumbnailsAvailable => appFlavor == 'preview';
 
 typedef ImageFetcher = Future<Uint8List> Function(Uri url);
 
+/// Downloads an oEmbed reply.
+typedef InfoFetcher = Future<String> Function(Uri url);
+
+/// Downloads the start of a web page, allowing redirects only within [hosts].
+typedef PageFetcher = Future<String> Function(Uri url, Set<String> hosts);
+
 Future<Uint8List> _defaultFetch(Uri url) =>
     safeFetchImage(url, const FetchPolicy(allowedHosts: thumbHosts));
+
+Future<String> _defaultInfo(Uri url) => safeFetchText(
+      url,
+      const FetchPolicy(allowedHosts: oembedHosts, maxBytes: 64 * 1024),
+      types: const {'application/json', 'text/json'},
+    );
+
+Future<String> _defaultPage(Uri url, Set<String> hosts) => safeFetchText(
+      url,
+      FetchPolicy(allowedHosts: hosts, maxBytes: 256 * 1024, maxRedirects: 3),
+      types: const {'text/html', 'application/xhtml+xml'},
+      truncate: true,
+    );
 
 /// Loads, stores and serves thumbnails while the vault is unlocked. Created
 /// on unlock, closed on lock: nothing is fetched or kept in memory while
@@ -27,8 +47,12 @@ class ThumbService extends ChangeNotifier {
   ThumbService(
     this.repo, {
     ImageFetcher? fetch,
+    InfoFetcher? info,
+    PageFetcher? page,
     Duration Function()? pause,
   })  : _fetch = fetch ?? _defaultFetch,
+        _info = info ?? _defaultInfo,
+        _page = page ?? _defaultPage,
         _pause = pause ?? _randomPause {
     repo.onAdded = _onAdded;
     unawaited(repo.pruneThumbs());
@@ -36,6 +60,8 @@ class ThumbService extends ChangeNotifier {
 
   final LinkRepository repo;
   final ImageFetcher _fetch;
+  final InfoFetcher _info;
+  final PageFetcher _page;
   final Duration Function() _pause;
 
   final Map<String, Uint8List> _cache = {};
@@ -57,8 +83,33 @@ class ThumbService extends ChangeNotifier {
   /// Whether the user's settings allow a thumbnail for this link at all.
   bool allowed(LinkItem l) {
     if (!settings.enabled) return false;
-    final r = thumbRequestFor(l.canonicalKey);
+    final r = videoSourceFor(l.canonicalKey);
     return r != null && settings.sites.contains(r.site);
+  }
+
+  final Set<String> _pageLoading = {};
+
+  bool isFetchingPageTitle(LinkItem l) => _pageLoading.contains(l.id);
+
+  /// Asks the link's own website for its title, once, because the user
+  /// tapped for it. Reads only the start of the page and only its title.
+  /// Returns the title stored, or null if none was found.
+  Future<String?> fetchPageTitle(LinkItem l) async {
+    final req = pageRequestFor(l.url);
+    if (req == null || _closed || !_pageLoading.add(l.id)) return null;
+    notifyListeners();
+    String? title;
+    try {
+      title = pageTitleFromHtml(await _page(req.url, req.hosts));
+    } on Object {
+      title = null;
+    } finally {
+      _pageLoading.remove(l.id);
+    }
+    if (_closed) return null;
+    if (title != null) await repo.setTitle(l, title);
+    notifyListeners();
+    return title;
   }
 
   /// The decrypted thumbnail, if stored. Loads it from disk in the
@@ -145,15 +196,13 @@ class ThumbService extends ChangeNotifier {
         _current = key;
         _queued.remove(key);
         notifyListeners();
-        final req = thumbRequestFor(key);
-        Uint8List? jpeg;
-        if (req != null && settings.enabled && settings.sites.contains(req.site)) {
-          try {
-            jpeg = await sanitizeThumbnail(await _fetch(req.url));
-          } on Object {
-            jpeg = null;
-          }
+        final src = videoSourceFor(key);
+        if (src != null && settings.enabled && settings.sites.contains(src.site)) {
+          final (title, jpeg) = await _load(src);
           if (_closed) break; // locked while downloading: store nothing
+          final link = repo.byCanonicalKey(key);
+          // Never replaces a title the link already has.
+          if (title != null && link != null && link.title == null) await repo.setTitle(link, title);
           if (jpeg != null) _cache[key] = jpeg;
           await repo.putThumb(key, jpeg);
         }
@@ -167,12 +216,33 @@ class ThumbService extends ChangeNotifier {
     }
   }
 
+  /// The title from the site's oEmbed reply and the cleaned thumbnail.
+  /// Either may be null; a failure of one doesn't stop the other.
+  Future<(String?, Uint8List?)> _load(VideoSource src) async {
+    String? title;
+    var thumb = src.directThumb;
+    try {
+      final info = parseOEmbed(await _info(src.oembed), src);
+      title = info.title;
+      thumb ??= info.thumb;
+    } on Object {
+      title = null;
+    }
+    if (_closed || thumb == null || !hostAllowed(thumb.host, src.imageHosts)) return (title, null);
+    try {
+      return (title, await sanitizeThumbnail(await _fetch(thumb)));
+    } on Object {
+      return (title, null);
+    }
+  }
+
   /// Called on lock: stop, and drop decrypted images from memory.
   void close() {
     _closed = true;
     _queue.clear();
     _queued.clear();
     _cache.clear();
+    _pageLoading.clear();
     _bulkAdded = const [];
   }
 

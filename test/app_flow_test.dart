@@ -80,6 +80,46 @@ void main() {
     });
   });
 
+  testWidgets('a link shared before any PIN exists is saved right after setup', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(500, 1000));
+    final tmp = (await tester.runAsync(() => Directory.systemTemp.createTemp('flow')))!;
+    final store = VaultStore(
+      dir: Directory('${tmp.path}/v'),
+      secrets: MemorySecrets(),
+      kdf: const KdfParams(memoryKiB: 256, iterations: 1),
+    );
+    final c = AppController(store);
+    await tester.pumpWidget(LinkVaultApp(controller: c));
+    await tester.runAsync(c.init);
+    await settleReal(tester);
+
+    // What a share leaves behind (the share plugin isn't available in tests).
+    c.pendingShares.add('Great Read - https://example.com/great-article');
+    c.quickSaveOpen = true;
+    c.discardShared('nothing'); // notifies listeners
+    await settleReal(tester);
+    expect(find.text('Choose a PIN first'), findsOneWidget);
+    expect(find.text('Save'), findsNothing);
+
+    await tester.tap(find.text('Choose PIN'));
+    await settleReal(tester, until: find.text('Choose a 6-digit PIN'));
+    await enterPin(tester, '246810', until: find.text('Type the PIN again'));
+    await enterPin(tester, '246810', until: find.text('example.com'));
+    expect(c.pendingShares, isEmpty);
+    final saved = c.repo!.query().single;
+    expect(saved.cleanUrl, 'https://example.com/great-article');
+    expect(saved.title, 'Great Read');
+
+    await settleReal(tester);
+    await tester.runAsync(() async {
+      try {
+        await tmp.delete(recursive: true);
+      } on FileSystemException {
+        // Left in the system temp folder.
+      }
+    });
+  });
+
   test('real PIN hashing settings take a reasonable time', () async {
     final sw = Stopwatch()..start();
     await argon2id('123456', randomBytes(16), const KdfParams());
