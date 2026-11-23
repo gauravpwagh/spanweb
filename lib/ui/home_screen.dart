@@ -305,7 +305,7 @@ class _LinkTile extends StatelessWidget {
     final theme = Theme.of(context);
     final t = thumbs;
     return ListTile(
-      leading: t != null && t.allowed(item) ? LinkThumb(thumbs: t, item: item) : null,
+      leading: t != null && (t.allowed(item) || t.hasImage(item)) ? LinkThumb(thumbs: t, item: item) : null,
       title: Text(item.title ?? item.displayPath, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

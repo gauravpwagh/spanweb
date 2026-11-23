@@ -313,7 +313,8 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
   }
 }
 
-/// Preview edition: asks the link's website for its title, only on a tap.
+/// Preview edition: asks the link's website for its title and preview
+/// image, only on a tap. Shows the image once one is stored.
 class _PageTitleButton extends StatelessWidget {
   const _PageTitleButton({required this.thumbs, required this.item, required this.onTitle});
   final ThumbService thumbs;
@@ -321,29 +322,42 @@ class _PageTitleButton extends StatelessWidget {
   final void Function(String title) onTitle;
 
   Future<void> _fetch(BuildContext context) async {
-    final title = await thumbs.fetchPageTitle(item);
+    final r = await thumbs.fetchPageInfo(item);
     if (!context.mounted) return;
-    if (title == null) {
-      showMessage(context, 'No title found on ${item.parsed?.host ?? 'the website'}');
-    } else {
-      onTitle(title);
-    }
+    final site = item.host;
+    if (r.title != null) onTitle(r.title!);
+    showMessage(
+      context,
+      switch ((r.title != null, r.image)) {
+        (true, true) => 'Title and image loaded',
+        (true, false) => 'Title loaded. $site has no preview image',
+        (false, true) => 'Image loaded. $site has no title',
+        (false, false) => 'Nothing found on $site',
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: thumbs,
         builder: (context, _) {
-          final busy = thumbs.isFetchingPageTitle(item);
-          return Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: busy ? null : () => _fetch(context),
-              icon: busy
-                  ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.travel_explore),
-              label: Text('Fetch title from ${item.parsed?.host ?? 'website'}'),
-            ),
+          final busy = thumbs.isFetchingPage(item);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (thumbs.hasImage(item))
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 4),
+                  child: LinkThumb(thumbs: thumbs, item: item, width: 240),
+                ),
+              TextButton.icon(
+                onPressed: busy ? null : () => _fetch(context),
+                icon: busy
+                    ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.travel_explore),
+                label: Text('Fetch title and image from ${item.host}'),
+              ),
+            ],
           );
         },
       );

@@ -24,6 +24,9 @@ typedef InfoFetcher = Future<String> Function(Uri url);
 /// Downloads the start of a web page, allowing redirects only within [hosts].
 typedef PageFetcher = Future<String> Function(Uri url, Set<String> hosts);
 
+/// Downloads a page's preview image, from that image's own host only.
+typedef PageImageFetcher = Future<Uint8List> Function(Uri url);
+
 Future<Uint8List> _defaultFetch(Uri url) =>
     safeFetchImage(url, const FetchPolicy(allowedHosts: thumbHosts));
 
@@ -32,6 +35,9 @@ Future<String> _defaultInfo(Uri url) => safeFetchText(
       const FetchPolicy(allowedHosts: oembedHosts, maxBytes: 64 * 1024),
       types: const {'application/json', 'text/json'},
     );
+
+Future<Uint8List> _defaultPageImage(Uri url) =>
+    safeFetchImage(url, FetchPolicy(allowedHosts: {url.host.toLowerCase()}));
 
 Future<String> _defaultPage(Uri url, Set<String> hosts) => safeFetchText(
       url,
@@ -49,10 +55,12 @@ class ThumbService extends ChangeNotifier {
     ImageFetcher? fetch,
     InfoFetcher? info,
     PageFetcher? page,
+    PageImageFetcher? pageImage,
     Duration Function()? pause,
   })  : _fetch = fetch ?? _defaultFetch,
         _info = info ?? _defaultInfo,
         _page = page ?? _defaultPage,
+        _pageImage = pageImage ?? _defaultPageImage,
         _pause = pause ?? _randomPause {
     repo.onAdded = _onAdded;
     unawaited(repo.pruneThumbs());
@@ -62,6 +70,7 @@ class ThumbService extends ChangeNotifier {
   final ImageFetcher _fetch;
   final InfoFetcher _info;
   final PageFetcher _page;
+  final PageImageFetcher _pageImage;
   final Duration Function() _pause;
 
   final Map<String, Uint8List> _cache = {};
@@ -89,34 +98,55 @@ class ThumbService extends ChangeNotifier {
 
   final Set<String> _pageLoading = {};
 
-  bool isFetchingPageTitle(LinkItem l) => _pageLoading.contains(l.id);
+  bool isFetchingPage(LinkItem l) => _pageLoading.contains(l.id);
 
-  /// Asks the link's own website for its title, once, because the user
-  /// tapped for it. Reads only the start of the page and only its title.
-  /// Returns the title stored, or null if none was found.
-  Future<String?> fetchPageTitle(LinkItem l) async {
+  /// Asks the link's own website for its title and preview image, once,
+  /// because the user tapped for it. Reads only the start of the page; the
+  /// image, if the page names one, is downloaded and re-encoded like video
+  /// thumbnails. Stores what was found.
+  Future<({String? title, bool image})> fetchPageInfo(LinkItem l) async {
+    const nothing = (title: null, image: false);
     final req = pageRequestFor(l.url);
-    if (req == null || _closed || !_pageLoading.add(l.id)) return null;
+    if (req == null || _closed || !_pageLoading.add(l.id)) return nothing;
     notifyListeners();
     String? title;
+    Uint8List? jpeg;
     try {
-      title = pageTitleFromHtml(await _page(req.url, req.hosts));
+      final html = await _page(req.url, req.hosts);
+      title = pageTitleFromHtml(html);
+      final img = pageImageFromHtml(html, req.url);
+      if (img != null && !_closed) {
+        try {
+          jpeg = await sanitizeThumbnail(await _pageImage(img));
+        } on Object {
+          jpeg = null;
+        }
+      }
     } on Object {
       title = null;
     } finally {
       _pageLoading.remove(l.id);
     }
-    if (_closed) return null;
+    if (_closed) return nothing;
     if (title != null) await repo.setTitle(l, title);
+    if (jpeg != null) {
+      _cache[l.canonicalKey] = jpeg;
+      await repo.putThumb(l.canonicalKey, jpeg);
+    }
     notifyListeners();
-    return title;
+    return (title: title, image: jpeg != null);
   }
+
+  /// Whether an image is stored for this link (video or page).
+  bool hasImage(LinkItem l) => repo.thumbStatus(l.canonicalKey) == ThumbStatus.ok;
 
   /// The decrypted thumbnail, if stored. Loads it from disk in the
   /// background the first time and notifies when ready.
   Uint8List? imageFor(LinkItem l) {
-    if (!settings.enabled) return null;
     final key = l.canonicalKey;
+    // Video thumbnails follow the on/off switch; page images were asked for
+    // one by one and stay until deleted.
+    if (!settings.enabled && videoSourceFor(key) != null) return null;
     final hit = _cache[key];
     if (hit != null) return hit;
     if (repo.thumbStatus(key) == ThumbStatus.ok && _diskLoading.add(key)) {

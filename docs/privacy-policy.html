@@ -82,13 +82,16 @@
     <code>i.vimeocdn.com</code>, <code>*.dmcdn.net</code>). This happens when you tap
     "Load title and thumbnail", or, if you choose it, automatically for newly saved
     links on those sites. After an import, the app asks before loading anything.</li>
-    <li><strong>Fetch title</strong> for any other link. When you tap "Fetch title from"
-    a website in a link's details, the app requests that one page from that website and
-    reads only its title from the start of the page. It follows redirects only within the
-    same website, and it takes no images from pages.</li>
+    <li><strong>Fetch title and image</strong> for any other link. When you tap "Fetch
+    title and image from" a website in a link's details, the app requests that one page
+    from that website and reads only its title and the address of its preview image
+    (the picture the page offers for link previews) from the start of the page. It
+    follows redirects only within the same website. If the page names a preview image,
+    the app downloads that one image, which may be kept on a different server chosen by
+    the website (for example an image hosting service).</li>
   </ul>
-  <p><strong>What those sites receive:</strong> the address of the video or page you
-  asked about, your IP address, and a generic browser identifier. The app sends no
+  <p><strong>What those sites receive:</strong> the address of the video, page or image
+  the app asked for, your IP address, and a generic browser identifier. The app sends no
   cookies, no account details, no referrer, and none of your other links, tags or notes.
   YouTube is operated by Google, and each site handles what it receives under its own
   privacy policy. Requests are made directly from your phone; the developer receives nothing.</p>
@@ -97,7 +100,8 @@
   refused; replies are limited in size and time; and every image is re-encoded by the
   app before it is shown or stored.</p>
   <p><strong>Turning it off:</strong> switch off Video titles &amp; thumbnails, or a
-  single site, at any time, and use "Delete all thumbnails" to remove stored images.
+  single site, at any time, and use "Delete all thumbnails" to remove stored images,
+  including images fetched from pages.
   Titles can be edited or cleared in each link's details. The standard edition never
   makes these requests.</p>
 

@@ -83,6 +83,28 @@ void main() {
     });
   });
 
+  group('page image address', () {
+    final page = Uri.parse('https://blog.example/posts/1');
+
+    test('prefers og:image, resolves relative addresses', () {
+      expect(pageImageFromHtml('<meta property="og:image" content="/a.png"><meta name="twitter:image" content="https://x/b.png">', page).toString(),
+          'https://blog.example/a.png');
+      expect(pageImageFromHtml("<meta name='twitter:image' content='//cdn.example/t.jpg'>", page).toString(),
+          'https://cdn.example/t.jpg');
+      expect(pageImageFromHtml('<link rel="image_src" href="img/c.webp">', page).toString(),
+          'https://blog.example/posts/img/c.webp');
+      expect(pageImageFromHtml('<meta property="og:image" content="https://cdn.example/a.jpg?w=1&amp;h=2">', page)!.query,
+          'w=1&h=2');
+    });
+
+    test('refuses non-HTTPS, data and credential addresses', () {
+      for (final c in ['http://cdn.example/a.jpg', 'data:image/png;base64,AAAA', 'https://u:p@cdn.example/a.jpg', 'javascript:alert(1)', '']) {
+        expect(pageImageFromHtml('<meta property="og:image" content="$c">', page), isNull, reason: c);
+      }
+      expect(pageImageFromHtml('<title>No image</title>', page), isNull);
+    });
+  });
+
   group('service', () {
     late Directory tmp;
     late VaultStore store;
@@ -161,7 +183,7 @@ void main() {
       expect(svc.allowed(a), isFalse);
       await pumpEventQueue();
       expect(pages, isEmpty);
-      expect(await svc.fetchPageTitle(a), 'Banana Bread Recipe');
+      expect(await svc.fetchPageInfo(a), (title: 'Banana Bread Recipe', image: false));
       expect(pages.single.$1.toString(), 'https://www.example.com/recipes/42');
       expect(pages.single.$2, contains('.example.com'));
       expect(a.title, 'Banana Bread Recipe');
@@ -173,8 +195,48 @@ void main() {
     test('a failed page fetch leaves the title alone', () async {
       final svc = ThumbService(repo, page: (u, h) async => throw FetchRefused('status 403'));
       final a = await repo.add('https://example.com/x', title: 'Kept');
-      expect(await svc.fetchPageTitle(a), isNull);
+      expect(await svc.fetchPageInfo(a), (title: null, image: false));
       expect(a.title, 'Kept');
+      svc.dispose();
+    });
+
+    test('page preview image: fetched from its own host, cleaned, stored encrypted, shown', () async {
+      final images = <Uri>[];
+      final svc = ThumbService(
+        repo,
+        page: (u, h) async => '<meta property="og:image" content="https://cdn.other-host.net/p/1.jpg">'
+            '<title>Small Blog Post</title>',
+        pageImage: (u) async {
+          images.add(u);
+          return jpeg();
+        },
+      );
+      final a = await repo.add('https://smallblog.example/post/7');
+      expect(svc.hasImage(a), isFalse);
+      expect(await svc.fetchPageInfo(a), (title: 'Small Blog Post', image: true));
+      expect(images.single.toString(), 'https://cdn.other-host.net/p/1.jpg');
+      expect(svc.hasImage(a), isTrue);
+      expect(svc.imageFor(a), isNotNull, reason: 'shown even with video info switched off');
+      await repo.updateThumbSettings((s) => s.enabled = false);
+      expect(svc.imageFor(a), isNotNull);
+      final files = Directory('${tmp.path}/v/thumbs').listSync().whereType<File>().toList();
+      expect(files, hasLength(1));
+      expect(files.single.path.contains('smallblog'), isFalse);
+      svc.dispose();
+    });
+
+    test('a bad page image still keeps the title', () async {
+      final svc = ThumbService(
+        repo,
+        page: (u, h) async => '<title>T</title><meta name="twitter:image" content="/img.jpg">',
+        pageImage: (u) async {
+          expect(u.toString(), 'https://site.example/img.jpg');
+          return Uint8List.fromList([1, 2, 3]);
+        },
+      );
+      final a = await repo.add('https://site.example/a');
+      expect(await svc.fetchPageInfo(a), (title: 'T', image: false));
+      expect(svc.hasImage(a), isFalse);
       svc.dispose();
     });
   });

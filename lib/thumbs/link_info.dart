@@ -65,6 +65,52 @@ String? pageTitleFromHtml(String html) {
   return null;
 }
 
+final _linkTag = RegExp(r'<link\b[^>]*>', caseSensitive: false);
+
+/// The page's preview image (`og:image`, then `twitter:image`, then
+/// `<link rel="image_src">`), resolved against [page]. Only an HTTPS address
+/// with no credentials is accepted; the image may be on another host (sites
+/// often keep images on a separate server).
+Uri? pageImageFromHtml(String html, Uri page) {
+  final metas = <String, String>{};
+  for (final m in _meta.allMatches(html)) {
+    final attrs = _attrsOf(m[0]!);
+    final key = (attrs['property'] ?? attrs['name'])?.toLowerCase();
+    final content = attrs['content'];
+    if (key != null && content != null) metas.putIfAbsent(key, () => content);
+  }
+  String? linkImage;
+  for (final m in _linkTag.allMatches(html)) {
+    final attrs = _attrsOf(m[0]!);
+    if (attrs['rel']?.toLowerCase() == 'image_src' && attrs['href'] != null) {
+      linkImage = attrs['href'];
+      break;
+    }
+  }
+  for (final raw in [
+    metas['og:image:secure_url'],
+    metas['og:image'],
+    metas['og:image:url'],
+    metas['twitter:image'],
+    metas['twitter:image:src'],
+    linkImage,
+  ]) {
+    if (raw == null || raw.trim().isEmpty) continue;
+    final Uri u;
+    try {
+      u = page.resolve(decodeEntities(raw.trim()));
+    } on FormatException {
+      continue;
+    }
+    if (u.scheme == 'https' && u.host.isNotEmpty && u.userInfo.isEmpty) return u;
+  }
+  return null;
+}
+
+Map<String, String> _attrsOf(String tag) => {
+      for (final a in _attr.allMatches(tag)) a[1]!.toLowerCase(): a[2] ?? a[3] ?? a[4] ?? '',
+    };
+
 final _entity = RegExp(r'&(#x[0-9a-fA-F]{1,6}|#\d{1,7}|[a-zA-Z]{2,8});');
 const _named = {'amp': '&', 'lt': '<', 'gt': '>', 'quot': '"', 'apos': "'", 'nbsp': ' ', 'ndash': '–', 'mdash': '—', 'hellip': '…', 'rsquo': '’', 'lsquo': '‘', 'rdquo': '”', 'ldquo': '“'};
 

@@ -134,10 +134,14 @@ no network access and doesn't include them.
   service, asked about the video ID; the video page is never loaded. YouTube
   thumbnails come straight from `i.ytimg.com`. Thumbnails are accepted only
   from each site's own image hosts. A title you already have is never replaced.
-- **Any other link**: a "Fetch title from <site>" button in link details asks
-  that website for the start of the page (256 KB at most) and reads only its
-  `og:title` or `<title>`. Only on a tap, one link at a time; redirects must
-  stay on the same website, and no images are taken from pages.
+- **Any other link**: a "Fetch title and image from <site>" button in link
+  details asks that website for the start of the page (256 KB at most) and
+  reads only its title (`og:title`, `twitter:title`, `<title>`) and preview
+  image address (`og:image`, `twitter:image`, `rel="image_src"`). Only on a
+  tap, one link at a time; page redirects must stay on the same website. The
+  image may be on another HTTPS host (sites often use an image server); it is
+  fetched from that host alone, with the same checks and re-encoding as video
+  thumbnails, and shown in lists like a video thumbnail.
 - All requests are HTTPS only, with no cookies or referrer, size caps and a
   10 s timeout, and refuse private network addresses. Images are re-encoded
   in an isolate; titles and images are stored encrypted. TikTok is left out
