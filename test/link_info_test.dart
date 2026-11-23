@@ -225,6 +225,16 @@ void main() {
       svc.dispose();
     });
 
+    test('grid view choice is saved in the vault', () async {
+      expect(repo.gridView, isFalse);
+      await repo.setGridView(true);
+      await repo.close();
+      final again = await LinkRepository.open(
+          store, (await store.unlock('123456') as Unlocked).session);
+      expect(again.gridView, isTrue);
+      await again.close();
+    });
+
     test('a bad page image still keeps the title', () async {
       final svc = ThumbService(
         repo,

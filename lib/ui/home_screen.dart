@@ -230,6 +230,12 @@ class _LinksViewState extends State<LinksView> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  if (widget.thumbs != null)
+                    IconButton(
+                      tooltip: repo.gridView ? 'Show as list' : 'Show as grid',
+                      icon: Icon(repo.gridView ? Icons.view_list : Icons.grid_view),
+                      onPressed: () => repo.setGridView(!repo.gridView),
+                    ),
                   IconButton(
                     tooltip: _sort == SortOrder.newestFirst ? 'Newest first' : 'Oldest first',
                     icon: Icon(_sort == SortOrder.newestFirst
@@ -274,6 +280,23 @@ class _LinksViewState extends State<LinksView> {
             Expanded(
               child: links.isEmpty
                   ? (repo.links.isEmpty ? const _Empty() : const Center(child: Text('No matching links')))
+                  : widget.thumbs != null && repo.gridView
+                  ? GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 260,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio: 1.0,
+                      ),
+                      itemCount: links.length,
+                      itemBuilder: (context, i) => _LinkCard(
+                        repo: repo,
+                        thumbs: widget.thumbs!,
+                        item: links[i],
+                        showGroup: widget.group == null,
+                      ),
+                    )
                   : ListView.separated(
                       padding: const EdgeInsets.only(bottom: 88),
                       itemCount: links.length,
@@ -341,6 +364,102 @@ class _LinkTile extends StatelessWidget {
       ),
       // Tapping shows details. Nothing in the app opens the link.
       onTap: () => showLinkSheet(context, repo, item, thumbs: thumbs),
+    );
+  }
+}
+
+/// Grid view: a large image (or the site's name) with the title below.
+class _LinkCard extends StatelessWidget {
+  const _LinkCard({required this.repo, required this.thumbs, required this.item, required this.showGroup});
+  final LinkRepository repo;
+  final ThumbService thumbs;
+  final LinkItem item;
+  final bool showGroup;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        // Tapping shows details. Nothing in the app opens the link.
+        onTap: () => showLinkSheet(context, repo, item, thumbs: thumbs),
+        onLongPress: () => copyLink(context, item.cleanUrl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Stack(
+              children: [
+                thumbs.allowed(item) || thumbs.hasImage(item)
+                    ? LinkThumb.fill(thumbs: thumbs, item: item)
+                    : AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: Container(
+                          color: scheme.surfaceContainerHighest,
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.all(8),
+                          child: Text(item.host,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall
+                                  ?.copyWith(color: scheme.onSurfaceVariant)),
+                        ),
+                      ),
+                if (item.possibleDuplicate)
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: _Pill('possible duplicate', color: scheme.tertiaryContainer),
+                  ),
+              ],
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 0, 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(item.title ?? item.displayPath,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium),
+                          ),
+                          Text(
+                            [
+                              if (showGroup || item.host != item.group) item.host,
+                              formatDate(item.addedAt),
+                              if (item.tags.isNotEmpty) '${item.tags.length} tag${item.tags.length == 1 ? '' : 's'}',
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 6),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Copy link',
+                      visualDensity: VisualDensity.compact,
+                      iconSize: 20,
+                      icon: const Icon(Icons.copy),
+                      onPressed: () => copyLink(context, item.cleanUrl),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -22,7 +22,7 @@ without weakening the vault. Off by default; the user opts in per site.
 
 | Item | Detail |
 |---|---|
-| Source | `https://i.ytimg.com/vi/<id>/mqdefault.jpg` (320×180, exists for every video). ID already validated by `_ytId` in `url_tools.dart` |
+| Source | `https://i.ytimg.com/vi/<id>/hqdefault.jpg` (480×360, exists for every video; shown cropped to 16:9). ID already validated by `_ytId` in `url_tools.dart` |
 | What leaks | Google learns the video ID and your IP. Nothing else: no page, no cookies, no account |
 
 ### New code
@@ -50,7 +50,7 @@ lib/ui/thumbnail_settings_screen.dart
 
 - Uses the pure-Dart `image` package inside `Isolate.run`.
 - Reads the header first and rejects images over 4096×4096 before decoding, which blocks decompression bombs.
-- Resizes to 320 px wide and re-encodes as JPEG (quality 75). Metadata (EXIF, ICC) is dropped as a side effect.
+- Resizes to 480 px wide and re-encodes as JPEG (quality 75). Metadata (EXIF, ICC) is dropped as a side effect.
 - Any exception means "no thumbnail". Nothing is retried in a loop.
 
 ### Storage

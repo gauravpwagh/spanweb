@@ -362,6 +362,15 @@ class LinkRepository extends ChangeNotifier {
 
   ThumbSettings get thumbSettings => _data.thumbSettings;
 
+  /// Whether link lists are shown as a grid of large images.
+  bool get gridView => _data.gridView;
+
+  Future<void> setGridView(bool on) {
+    if (_data.gridView == on) return Future.value();
+    _data.gridView = on;
+    return _save();
+  }
+
   Future<void> updateThumbSettings(void Function(ThumbSettings s) change) {
     change(_data.thumbSettings);
     return _save();

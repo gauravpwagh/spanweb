@@ -31,7 +31,7 @@ void main() {
         'https://www.youtube.com/shorts/$id',
       ]) {
         final r = videoSourceFor(parseLink(u)!.canonicalKey)!;
-        expect(r.directThumb.toString(), 'https://i.ytimg.com/vi/$id/mqdefault.jpg');
+        expect(r.directThumb.toString(), 'https://i.ytimg.com/vi/$id/hqdefault.jpg');
         expect(r.site, 'youtube.com');
         expect(r.oembed.host, 'www.youtube.com');
         expect(r.oembed.queryParameters['url'], 'https://www.youtube.com/watch?v=$id');
@@ -191,12 +191,12 @@ void main() {
   });
 
   group('sanitize', () {
-    test('re-encodes JPEG and PNG to a 320 px JPEG without metadata', () {
+    test('re-encodes JPEG and PNG to a 480 px JPEG without metadata', () {
       final src = img.Image(width: 640, height: 360)..exif.imageIfd['Artist'] = 'secret-name';
       for (final bytes in [img.encodeJpg(src), img.encodePng(src)]) {
         final out = sanitizeThumbnailSync(bytes)!;
         final back = img.decodeJpg(out)!;
-        expect((back.width, back.height), (320, 180));
+        expect((back.width, back.height), (480, 270));
         expect(latin1.decode(out, allowInvalid: true).contains('secret-name'), isFalse);
       }
     });

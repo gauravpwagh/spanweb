@@ -141,41 +141,48 @@ class _Header extends StatelessWidget {
 }
 
 /// A link's thumbnail, or nothing. Never tappable on its own.
+///
+/// With [width] null it fills the available width (grid view), 16:9.
 class LinkThumb extends StatelessWidget {
   const LinkThumb({super.key, required this.thumbs, required this.item, this.width = 72});
+  const LinkThumb.fill({super.key, required this.thumbs, required this.item}) : width = null;
   final ThumbService thumbs;
   final LinkItem item;
-  final double width;
+  final double? width;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: thumbs,
         builder: (context, _) {
           final bytes = thumbs.imageFor(item);
+          final radius = BorderRadius.circular(width == null ? 0 : 6);
+          final Widget child;
           if (bytes == null) {
             // Keeps list rows aligned until (or unless) a thumbnail exists.
-            return Container(
-              width: width,
-              height: width * 9 / 16,
+            child = Container(
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: radius,
               ),
               child: Icon(Icons.smart_display_outlined,
+                  size: width == null ? 36 : null,
                   color: Theme.of(context).colorScheme.onSurfaceVariant),
             );
+          } else {
+            child = ClipRRect(
+              borderRadius: radius,
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                excludeFromSemantics: true,
+              ),
+            );
           }
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: Image.memory(
-              bytes,
-              width: width,
-              height: width * 9 / 16,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              excludeFromSemantics: true,
-            ),
-          );
+          final w = width;
+          return w == null
+              ? AspectRatio(aspectRatio: 16 / 9, child: child)
+              : SizedBox(width: w, height: w * 9 / 16, child: child);
         },
       );
 }

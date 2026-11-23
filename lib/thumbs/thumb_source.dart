@@ -51,8 +51,9 @@ VideoSource? videoSourceFor(String canonicalKey) {
       site: 'youtube.com',
       oembed: Uri.https('www.youtube.com', '/oembed',
           {'url': 'https://www.youtube.com/watch?v=$id', 'format': 'json'}),
-      // mqdefault: 320x180, exists for every video.
-      directThumb: Uri.https('i.ytimg.com', '/vi/$id/mqdefault.jpg'),
+      // hqdefault: 480x360 (16:9 picture with black bars, cropped when shown),
+      // exists for every video.
+      directThumb: Uri.https('i.ytimg.com', '/vi/$id/hqdefault.jpg'),
       imageHosts: const {'i.ytimg.com'},
     );
   }

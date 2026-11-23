@@ -112,6 +112,7 @@ class VaultData {
     ThumbSettings? thumbSettings,
     Map<String, ThumbStatus>? thumbs,
     Map<String, String>? domainMoves,
+    this.gridView = false,
   })  : links = links ?? [],
         tagLibrary = tagLibrary ?? <String>{},
         thumbSettings = thumbSettings ?? ThumbSettings(),
@@ -135,6 +136,9 @@ class VaultData {
   /// later from the old domain are changed to the new one.
   final Map<String, String> domainMoves;
 
+  /// Links shown as a grid of large images instead of a list.
+  bool gridView;
+
   Map<String, Object?> toJson() => {
         'version': version,
         'links': links.map((l) => l.toJson()).toList(),
@@ -142,6 +146,7 @@ class VaultData {
         'thumbSettings': thumbSettings.toJson(),
         if (thumbs.isNotEmpty) 'thumbs': {for (final e in thumbs.entries) e.key: e.value.name},
         if (domainMoves.isNotEmpty) 'domainMoves': domainMoves,
+        if (gridView) 'gridView': true,
       };
 
   factory VaultData.fromJson(Map<String, Object?> j) => VaultData(
@@ -159,6 +164,7 @@ class VaultData {
           for (final e in ((j['domainMoves'] as Map?) ?? const {}).entries)
             if (e.key is String && e.value is String) e.key as String: e.value as String,
         },
+        gridView: j['gridView'] == true,
       );
 }
 

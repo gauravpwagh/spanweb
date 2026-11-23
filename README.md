@@ -142,6 +142,10 @@ no network access and doesn't include them.
   image may be on another HTTPS host (sites often use an image server); it is
   fetched from that host alone, with the same checks and re-encoding as video
   thumbnails, and shown in lists like a video thumbnail.
+- **Grid view**: the button next to sort switches link lists between a list
+  and a grid of cards with large images (or the site's name when there is
+  none), for browsing by picture. Tap a card for details, long-press or use
+  its copy button to copy the link. The choice is kept in the vault.
 - All requests are HTTPS only, with no cookies or referrer, size caps and a
   10 s timeout, and refuse private network addresses. Images are re-encoded
   in an isolate; titles and images are stored encrypted. TikTok is left out

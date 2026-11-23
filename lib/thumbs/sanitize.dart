@@ -11,7 +11,7 @@ Future<Uint8List?> sanitizeThumbnail(Uint8List bytes) =>
     Isolate.run(() => sanitizeThumbnailSync(bytes));
 
 const maxSourceSide = 4096;
-const thumbWidth = 320;
+const thumbWidth = 480;
 
 Uint8List? sanitizeThumbnailSync(Uint8List bytes) {
   try {
