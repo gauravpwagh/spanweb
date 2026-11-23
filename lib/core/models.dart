@@ -46,11 +46,49 @@ class LinkItem {
       );
 }
 
+/// Thumbnail choices. Off by default; sites must be switched on one by one.
+class ThumbSettings {
+  ThumbSettings({this.enabled = false, Set<String>? sites, this.automatic = false})
+      : sites = sites ?? <String>{};
+
+  bool enabled;
+
+  /// Website groups allowed to be asked for thumbnails, e.g. `youtube.com`.
+  final Set<String> sites;
+
+  /// Load thumbnails for newly saved links without asking. Imports always ask.
+  bool automatic;
+
+  Map<String, Object?> toJson() => {
+        'enabled': enabled,
+        'sites': sites.toList()..sort(),
+        'automatic': automatic,
+      };
+
+  factory ThumbSettings.fromJson(Map<String, Object?>? j) => j == null
+      ? ThumbSettings()
+      : ThumbSettings(
+          enabled: j['enabled'] == true,
+          sites: {for (final s in (j['sites'] as List? ?? const [])) s as String},
+          automatic: j['automatic'] == true,
+        );
+}
+
+/// Whether a thumbnail was stored, or why not. Failed ones are not retried
+/// automatically.
+enum ThumbStatus { ok, failed }
+
 /// Everything inside the encrypted vault.
 class VaultData {
-  VaultData({List<LinkItem>? links, Set<String>? tagLibrary})
-      : links = links ?? [],
-        tagLibrary = tagLibrary ?? <String>{};
+  VaultData({
+    List<LinkItem>? links,
+    Set<String>? tagLibrary,
+    ThumbSettings? thumbSettings,
+    Map<String, ThumbStatus>? thumbs,
+  })  : links = links ?? [],
+        tagLibrary = tagLibrary ?? <String>{},
+        thumbSettings = thumbSettings ?? ThumbSettings(),
+        thumbs = thumbs ?? {};
 
   static const version = 1;
   final List<LinkItem> links;
@@ -59,10 +97,18 @@ class VaultData {
   /// are added here too, so they are suggested next time.
   final Set<String> tagLibrary;
 
+  final ThumbSettings thumbSettings;
+
+  /// Thumbnail status by link canonical key. The images themselves are
+  /// separate encrypted files.
+  final Map<String, ThumbStatus> thumbs;
+
   Map<String, Object?> toJson() => {
         'version': version,
         'links': links.map((l) => l.toJson()).toList(),
         'tags': tagLibrary.toList()..sort(),
+        'thumbSettings': thumbSettings.toJson(),
+        if (thumbs.isNotEmpty) 'thumbs': {for (final e in thumbs.entries) e.key: e.value.name},
       };
 
   factory VaultData.fromJson(Map<String, Object?> j) => VaultData(
@@ -71,6 +117,11 @@ class VaultData {
             LinkItem.fromJson((l as Map).cast<String, Object?>()),
         ],
         tagLibrary: {for (final t in (j['tags'] as List? ?? const [])) t as String},
+        thumbSettings: ThumbSettings.fromJson((j['thumbSettings'] as Map?)?.cast()),
+        thumbs: {
+          for (final e in ((j['thumbs'] as Map?) ?? const {}).entries)
+            e.key as String: ?ThumbStatus.values.asNameMap()[e.value],
+        },
       );
 }
 

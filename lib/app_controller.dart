@@ -5,6 +5,7 @@ import 'package:share_handler/share_handler.dart';
 
 import 'core/link_repository.dart';
 import 'core/vault_store.dart';
+import 'thumbs/thumb_service.dart';
 
 enum Stage { loading, needsSetup, locked, unlocked }
 
@@ -17,6 +18,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Stage stage = Stage.loading;
   LinkRepository? repo;
   Session? _session;
+
+  /// Video thumbnails, preview edition only. Null in the store edition.
+  ThumbService? thumbs;
+
+  /// Creates the thumbnail service on unlock; tests replace it.
+  ThumbService Function(LinkRepository repo)? thumbFactory =
+      thumbnailsAvailable ? ThumbService.new : null;
 
   /// Text shared from other apps, waiting to be saved to the inbox.
   final List<String> pendingShares = [];
@@ -91,6 +99,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _finishUnlock() async {
     final r = await LinkRepository.open(store, _session!);
     repo = r;
+    thumbs = thumbFactory?.call(r);
     stage = Stage.unlocked;
     notifyListeners();
     inboxReport = await r.ingestInbox();
@@ -99,10 +108,22 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   void lock() {
     if (stage != Stage.unlocked) return;
-    repo?.dispose();
+    thumbs?.dispose();
+    thumbs = null;
+    final r = repo;
+    final s = _session;
     repo = null;
-    _session?.wipe();
     _session = null;
+    // Wipe the keys only after the last save has finished; wiping mid-save
+    // would encrypt the vault with a zeroed key.
+    if (r == null) {
+      s?.wipe();
+    } else {
+      r.close().whenComplete(() {
+        s?.wipe();
+        r.dispose();
+      });
+    }
     inboxReport = null;
     stage = Stage.locked;
     notifyListeners();
@@ -168,6 +189,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _shareSub?.cancel();
+    thumbs?.dispose();
     repo?.dispose();
     super.dispose();
   }

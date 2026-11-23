@@ -59,7 +59,8 @@ Package name: `io.github.gauravpwagh.spanweb` (can't change after the first uplo
    ```
 2. Copy `android/key.properties.example` to `android/key.properties` and fill in the passwords.
 3. Raise `version:` in `pubspec.yaml` for every upload (`1.0.0+1` → `1.0.1+2`; the number after `+` must go up).
-4. `flutter build appbundle --release` → `build/app/outputs/bundle/release/app-release.aab`.
+4. `flutter build appbundle --release` → `build/app/outputs/bundle/storeRelease/app-store-release.aab`
+   (Flutter's message may name `bundle/release/`; the file is in `storeRelease/`).
 5. Play Console → your app → Testing → Internal testing → Create release → upload the `.aab`.
    Keep Play App Signing on (the default).
 
@@ -68,6 +69,19 @@ Without `key.properties` the release build is signed with the debug key, which P
 App icon: drawn by `python tool/make_icon.py` (needs Pillow), which writes the
 Android adaptive and themed icons, all iOS sizes, and `assets/icon/play-store-512.png`
 for the Play listing. Edit the script and re-run it to change the icon.
+
+## Editions (Android flavors)
+
+| Flavor | For | Network | Build |
+|---|---|---|---|
+| `store` (default) | Play Store | None: INTERNET permission removed | `flutter build appbundle --release` |
+| `preview` | Internal testing only | HTTPS only, for opt-in video thumbnails | `flutter build appbundle --release --flavor preview` |
+
+Run on a device with `flutter run` (store) or `flutter run --flavor preview`.
+Thumbnails are built only from YouTube video IDs (`i.ytimg.com`), never by
+fetching pages; see `docs/thumbnails-plan.md`. Upload preview bundles only to
+the **Internal testing** track, and give each upload a higher build number
+(`+N` in `pubspec.yaml`) than any earlier upload of either flavor.
 
 ## iOS: Share Extension (needs a Mac with Xcode)
 

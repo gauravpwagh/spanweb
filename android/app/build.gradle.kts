@@ -48,6 +48,19 @@ android {
         }
     }
 
+    // store: the Play Store app, no network. preview: internal testing only,
+    // adds opt-in video thumbnails and the INTERNET permission.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("store") {
+            dimension = "edition"
+        }
+        create("preview") {
+            dimension = "edition"
+            versionNameSuffix = "-preview"
+        }
+    }
+
     buildTypes {
         release {
             // Upload key when android/key.properties exists; otherwise debug

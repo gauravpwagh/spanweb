@@ -69,6 +69,21 @@ class LinkRepository extends ChangeNotifier {
   final Map<String, LinkItem> _byCanonical = {};
   final Map<String, List<LinkItem>> _bySegment = {};
   Future<void> _saving = Future.value();
+  bool _closed = false;
+
+  /// Called with links that were just added. [bulk] is true for imports,
+  /// which must ask before fetching anything.
+  void Function(List<LinkItem> added, {required bool bulk})? onAdded;
+
+  bool get isClosed => _closed;
+
+  /// Stops further saves and completes when the last pending save has
+  /// finished, so the caller can then wipe the keys safely.
+  Future<void> close() {
+    _closed = true;
+    onAdded = null;
+    return _saving.catchError((Object _) {});
+  }
 
   List<LinkItem> get links => List.unmodifiable(_data.links);
 
@@ -151,13 +166,15 @@ class LinkRepository extends ChangeNotifier {
     if (c.exact != null) throw StateError('Already saved');
     final item = _insert(IncomingLink(url, addedAt: addedAt, tags: tags, note: note), c);
     await _save();
+    onAdded?.call([item], bulk: false);
     return item;
   }
 
   /// Adds many links at once: exact duplicates are merged into the existing
   /// link (tags combined, earliest date kept), possible duplicates flagged.
-  Future<MergeReport> merge(Iterable<IncomingLink> incoming) async {
+  Future<MergeReport> merge(Iterable<IncomingLink> incoming, {bool bulk = false}) async {
     final r = MergeReport();
+    final added = <LinkItem>[];
     for (final inc in incoming) {
       final c = check(inc.url);
       if (c.invalid) {
@@ -167,11 +184,13 @@ class LinkRepository extends ChangeNotifier {
         _mergeInto(c.exact!, inc);
       } else {
         final item = _insert(inc, c);
+        added.add(item);
         r.added++;
         if (item.possibleDuplicate) r.possibleDuplicates++;
       }
     }
     if (r.total > 0) await _save();
+    if (added.isNotEmpty) onAdded?.call(added, bulk: bulk);
     return r;
   }
 
@@ -219,7 +238,57 @@ class LinkRepository extends ChangeNotifier {
   Future<void> delete(LinkItem item) async {
     _data.links.removeWhere((l) => l.id == item.id);
     _reindex();
+    if (_data.thumbs.remove(item.canonicalKey) != null) {
+      await _store.deleteThumb(_session, item.canonicalKey);
+    }
     await _save();
+  }
+
+  // --- thumbnails ---
+
+  ThumbSettings get thumbSettings => _data.thumbSettings;
+
+  Future<void> updateThumbSettings(void Function(ThumbSettings s) change) {
+    change(_data.thumbSettings);
+    return _save();
+  }
+
+  ThumbStatus? thumbStatus(String canonicalKey) => _data.thumbs[canonicalKey];
+
+  Future<Uint8List?> loadThumb(String canonicalKey) =>
+      _closed ? Future.value(null) : _store.loadThumb(_session, canonicalKey);
+
+  /// Stores a thumbnail (or records a failure, with [jpeg] null).
+  Future<void> putThumb(String canonicalKey, Uint8List? jpeg) async {
+    if (_closed) return;
+    if (jpeg != null) await _store.saveThumb(_session, canonicalKey, jpeg);
+    if (_closed) return;
+    _data.thumbs[canonicalKey] = jpeg == null ? ThumbStatus.failed : ThumbStatus.ok;
+    await _save();
+  }
+
+  /// Forgets failures, so those links can be tried again.
+  Future<void> clearThumbFailures() {
+    _data.thumbs.removeWhere((_, s) => s == ThumbStatus.failed);
+    return _save();
+  }
+
+  Future<void> deleteAllThumbs() async {
+    _data.thumbs.clear();
+    await _store.deleteAllThumbs();
+    await _save();
+  }
+
+  /// Removes thumbnail files and records left behind by deleted links.
+  Future<void> pruneThumbs() async {
+    final live = {for (final l in _data.links) l.canonicalKey};
+    final before = _data.thumbs.length;
+    _data.thumbs.removeWhere((k, _) => !live.contains(k));
+    await _store.pruneThumbs(
+      _session,
+      _data.thumbs.entries.where((e) => e.value == ThumbStatus.ok).map((e) => e.key),
+    );
+    if (_data.thumbs.length != before) await _save();
   }
 
   Future<void> addTagToLibrary(String raw) async {
@@ -310,6 +379,8 @@ class LinkRepository extends ChangeNotifier {
 
   /// Saves are queued so two quick edits never write out of order.
   Future<void> _save() {
+    // After locking the keys are being wiped: never write with them.
+    if (_closed) return Future.value();
     notifyListeners();
     // A failed earlier save must not block later ones; its error was already
     // returned to whoever made that change.

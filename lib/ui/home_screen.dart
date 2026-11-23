@@ -6,7 +6,9 @@ import '../core/models.dart';
 import 'common.dart';
 import 'import_export_ui.dart';
 import 'link_sheets.dart';
+import '../thumbs/thumb_service.dart';
 import 'settings_screens.dart';
+import 'thumbnail_settings_screen.dart';
 
 /// After unlocking: links grouped by website, or all links in one list.
 class HomeScreen extends StatefulWidget {
@@ -66,13 +68,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   case 'pin':
                     await Navigator.push(context,
                         MaterialPageRoute(builder: (_) => ChangePinScreen(controller: c)));
+                  case 'thumbs':
+                    await Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => ThumbnailSettingsScreen(thumbs: c.thumbs!)));
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'import', child: Text('Import links')),
-                PopupMenuItem(value: 'export', child: Text('Export links')),
-                PopupMenuItem(value: 'tags', child: Text('Manage tags')),
-                PopupMenuItem(value: 'pin', child: Text('Change PIN')),
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'import', child: Text('Import links')),
+                const PopupMenuItem(value: 'export', child: Text('Export links')),
+                const PopupMenuItem(value: 'tags', child: Text('Manage tags')),
+                if (c.thumbs != null)
+                  const PopupMenuItem(value: 'thumbs', child: Text('Video thumbnails')),
+                const PopupMenuItem(value: 'pin', child: Text('Change PIN')),
               ],
             ),
           ],
@@ -85,8 +92,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         body: TabBarView(
           children: [
-            _GroupsTab(repo: repo),
-            LinksView(repo: repo),
+            _GroupsTab(repo: repo, thumbs: c.thumbs),
+            LinksView(repo: repo, thumbs: c.thumbs),
           ],
         ),
       ),
@@ -95,8 +102,9 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _GroupsTab extends StatelessWidget {
-  const _GroupsTab({required this.repo});
+  const _GroupsTab({required this.repo, this.thumbs});
   final LinkRepository repo;
+  final ThumbService? thumbs;
 
   @override
   Widget build(BuildContext context) {
@@ -120,7 +128,7 @@ class _GroupsTab extends StatelessWidget {
                 MaterialPageRoute(
                   builder: (_) => Scaffold(
                     appBar: AppBar(title: Text(g.group)),
-                    body: LinksView(repo: repo, group: g.group),
+                    body: LinksView(repo: repo, group: g.group, thumbs: thumbs),
                   ),
                 ),
               ),
@@ -149,9 +157,10 @@ class _Empty extends StatelessWidget {
 
 /// A list of links with search, tag filters and date sort.
 class LinksView extends StatefulWidget {
-  const LinksView({super.key, required this.repo, this.group});
+  const LinksView({super.key, required this.repo, this.group, this.thumbs});
   final LinkRepository repo;
   final String? group;
+  final ThumbService? thumbs;
 
   @override
   State<LinksView> createState() => _LinksViewState();
@@ -250,6 +259,7 @@ class _LinksViewState extends State<LinksView> {
                       separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (context, i) => _LinkTile(
                         repo: repo,
+                        thumbs: widget.thumbs,
                         item: links[i],
                         showGroup: widget.group == null,
                       ),
@@ -263,15 +273,18 @@ class _LinksViewState extends State<LinksView> {
 }
 
 class _LinkTile extends StatelessWidget {
-  const _LinkTile({required this.repo, required this.item, required this.showGroup});
+  const _LinkTile({required this.repo, this.thumbs, required this.item, required this.showGroup});
   final LinkRepository repo;
+  final ThumbService? thumbs;
   final LinkItem item;
   final bool showGroup;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final t = thumbs;
     return ListTile(
+      leading: t != null && t.allowed(item) ? LinkThumb(thumbs: t, item: item) : null,
       title: Text(item.cleanUrl, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -301,7 +314,7 @@ class _LinkTile extends StatelessWidget {
         onPressed: () => copyLink(context, item.cleanUrl),
       ),
       // Tapping shows details. Nothing in the app opens the link.
-      onTap: () => showLinkSheet(context, repo, item),
+      onTap: () => showLinkSheet(context, repo, item, thumbs: thumbs),
     );
   }
 }

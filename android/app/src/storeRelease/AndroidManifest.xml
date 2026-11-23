@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- No network access in release builds: links never leave the phone. -->
+    <!-- Store edition: no network access at all, links never leave the phone. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
 </manifest>

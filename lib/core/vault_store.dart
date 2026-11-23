@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:cryptography/cryptography.dart' show SecretBoxAuthenticationError;
+import 'package:cryptography/cryptography.dart' show Hmac, SecretBoxAuthenticationError, SecretKey;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'crypto.dart';
@@ -75,6 +75,8 @@ class InboxEntry {
 /// * `vault.bin`  - all links and tags, AES-256-GCM with the data key.
 /// * `inbox/*.bin`- links shared without login, each sealed to the inbox
 ///   public key. Writable without the PIN, readable only after unlocking.
+/// * `thumbs/*.bin` - video thumbnails (preview edition), each sealed with
+///   the data key; file names are keyed hashes of the link.
 ///
 /// The PIN key mixes Argon2id(PIN) with a random device secret kept in the
 /// Keystore/Keychain, so copying the files off the phone is not enough to
@@ -229,6 +231,64 @@ class VaultStore {
       }
     }
     return out;
+  }
+
+  // --- thumbnails: one encrypted file each, in thumbs/ ---
+
+  /// File name for a link's thumbnail: a keyed hash, so names don't reveal
+  /// which videos are saved.
+  Future<File> _thumbFile(Session s, String canonicalKey) async {
+    final nameKey = await hkdf(s._dek, salt: const [], info: 'linkvault-thumb-names-v1');
+    final mac = await Hmac.sha256().calculateMac(
+      utf8.encode(canonicalKey),
+      secretKey: SecretKey(nameKey),
+    );
+    final name = mac.bytes.take(16).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return File('${_thumbDir.path}/$name.bin');
+  }
+
+  Directory get _thumbDir => Directory('${dir.path}/thumbs');
+
+  Future<void> saveThumb(Session s, String canonicalKey, List<int> jpeg) async {
+    final sealed = await seal(s._dek, jpeg, aad: 'thumb:$canonicalKey');
+    await _thumbDir.create(recursive: true);
+    await _atomicWrite(await _thumbFile(s, canonicalKey), jsonEncode(sealed));
+  }
+
+  /// The stored thumbnail, or null if there is none or it can't be read.
+  Future<Uint8List?> loadThumb(Session s, String canonicalKey) async {
+    final f = await _thumbFile(s, canonicalKey);
+    if (!await f.exists()) return null;
+    try {
+      final sealed = jsonDecode(await f.readAsString()) as Map<String, Object?>;
+      return await open(s._dek, sealed, aad: 'thumb:$canonicalKey');
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> deleteThumb(Session s, String canonicalKey) async {
+    final f = await _thumbFile(s, canonicalKey);
+    if (await f.exists()) await f.delete();
+  }
+
+  /// Deletes thumbnail files that belong to none of [keep].
+  Future<int> pruneThumbs(Session s, Iterable<String> keep) async {
+    if (!await _thumbDir.exists()) return 0;
+    String name(String path) => path.split(RegExp(r'[/\\]')).last;
+    final wanted = {for (final k in keep) name((await _thumbFile(s, k)).path)};
+    var removed = 0;
+    await for (final e in _thumbDir.list()) {
+      if (e is File && !wanted.contains(name(e.path))) {
+        await e.delete();
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  Future<void> deleteAllThumbs() async {
+    if (await _thumbDir.exists()) await _thumbDir.delete(recursive: true);
   }
 
   /// Deletes everything: used when the PIN is forgotten.

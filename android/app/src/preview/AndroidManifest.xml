@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Preview edition (internal testing only): network for opt-in video
+         thumbnails. Only HTTPS, only system certificates. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+</manifest>

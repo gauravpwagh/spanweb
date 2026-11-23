@@ -3,22 +3,26 @@ import 'package:flutter/services.dart';
 
 import '../core/link_repository.dart';
 import '../core/models.dart';
+import '../thumbs/thumb_service.dart';
 import 'common.dart';
+import 'thumbnail_settings_screen.dart';
 
 /// Details for one link: copy, tags, note, duplicates, delete. There is no
 /// "open" button on purpose.
-Future<void> showLinkSheet(BuildContext context, LinkRepository repo, LinkItem item) =>
+Future<void> showLinkSheet(BuildContext context, LinkRepository repo, LinkItem item,
+        {ThumbService? thumbs}) =>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _LinkSheet(repo: repo, item: item),
+      builder: (_) => _LinkSheet(repo: repo, item: item, thumbs: thumbs),
     );
 
 class _LinkSheet extends StatefulWidget {
-  const _LinkSheet({required this.repo, required this.item});
+  const _LinkSheet({required this.repo, required this.item, this.thumbs});
   final LinkRepository repo;
   final LinkItem item;
+  final ThumbService? thumbs;
 
   @override
   State<_LinkSheet> createState() => _LinkSheetState();
@@ -66,6 +70,7 @@ class _LinkSheetState extends State<_LinkSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (widget.thumbs case final t? when t.allowed(item)) _ThumbSection(thumbs: t, item: item),
             Text(item.group, style: theme.textTheme.labelLarge),
             const SizedBox(height: 6),
             // Plain selectable text: never turned into a tappable link.
@@ -291,4 +296,48 @@ class _AddLinkSheetState extends State<_AddLinkSheet> {
       ),
     );
   }
+}
+
+/// Thumbnail and its "Load" button in the link details (preview edition).
+class _ThumbSection extends StatelessWidget {
+  const _ThumbSection({required this.thumbs, required this.item});
+  final ThumbService thumbs;
+  final LinkItem item;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: thumbs,
+        builder: (context, _) {
+          final has = thumbs.imageFor(item) != null;
+          final status = thumbs.status(item);
+          final Widget action;
+          if (thumbs.isLoading(item)) {
+            action = const Row(children: [
+              SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 8),
+              Text('Loading thumbnail...'),
+            ]);
+          } else if (status == ThumbStatus.ok) {
+            action = const SizedBox.shrink();
+          } else {
+            action = OutlinedButton.icon(
+              onPressed: () => thumbs.request([item], first: true),
+              icon: const Icon(Icons.image_outlined),
+              label: Text(status == ThumbStatus.failed
+                  ? 'Could not load thumbnail. Try again'
+                  : 'Load thumbnail'),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (has) LinkThumb(thumbs: thumbs, item: item, width: 240),
+                action,
+              ],
+            ),
+          );
+        },
+      );
 }
