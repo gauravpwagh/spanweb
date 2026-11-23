@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:link_vault/core/crypto.dart';
 import 'package:link_vault/core/import_export.dart';
 import 'package:link_vault/core/link_repository.dart';
+import 'package:link_vault/core/models.dart';
 import 'package:link_vault/core/url_tools.dart';
 import 'package:link_vault/core/vault_store.dart';
 
@@ -34,6 +35,25 @@ void main() {
       expect(t.length, maxTitleLength);
       expect(t.startsWith('A B '), isTrue);
       expect(t.endsWith('…'), isTrue);
+    });
+  });
+
+  group('display without the domain', () {
+    LinkItem item(String url) => LinkItem(id: 'x', url: url, addedAt: DateTime(2026));
+
+    test('shows path and query; copying uses the whole link', () {
+      final l = item('https://www.bbc.co.uk/news/articles/c123?id=2&utm_source=x#top');
+      expect(l.displayPath, '/news/articles/c123?id=2');
+      expect(l.host, 'bbc.co.uk');
+      expect(l.cleanUrl, 'https://www.bbc.co.uk/news/articles/c123?id=2');
+    });
+
+    test('subdomain, home page, short links and encoded characters', () {
+      expect(item('https://news.ycombinator.com/item?id=1').host, 'news.ycombinator.com');
+      expect(item('https://example.com/').displayPath, 'example.com');
+      expect(item('https://www.example.com').displayPath, 'example.com');
+      expect(item('https://youtu.be/dQw4w9WgXcQ').displayPath, '/dQw4w9WgXcQ');
+      expect(item('https://de.wikipedia.org/wiki/K%C3%B6ln').displayPath, '/wiki/Köln');
     });
   });
 

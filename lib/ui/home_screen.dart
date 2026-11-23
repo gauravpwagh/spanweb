@@ -306,14 +306,17 @@ class _LinkTile extends StatelessWidget {
     final t = thumbs;
     return ListTile(
       leading: t != null && t.allowed(item) ? LinkThumb(thumbs: t, item: item) : null,
-      title: Text(item.title ?? item.cleanUrl, maxLines: 2, overflow: TextOverflow.ellipsis),
+      title: Text(item.title ?? item.displayPath, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (item.title != null)
-            Text(item.cleanUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(item.displayPath, maxLines: 1, overflow: TextOverflow.ellipsis),
           Text(
-            [if (showGroup) item.group, formatDate(item.addedAt)].join(' · '),
+            // The site is shown here, so the line above can leave it out. Inside a
+            // website's own list only a subdomain is worth repeating.
+            [if (showGroup || item.host != item.group) item.host, formatDate(item.addedAt)]
+                .join(' · '),
             style: theme.textTheme.bodySmall,
           ),
           if (item.tags.isNotEmpty || item.possibleDuplicate)

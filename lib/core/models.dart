@@ -27,6 +27,25 @@ class LinkItem {
   final ParsedLink? parsed;
 
   String get cleanUrl => parsed?.clean ?? url;
+
+  /// The site as shown: the host without `www.`/`m.`, e.g. `news.bbc.co.uk`.
+  String get host => parsed?.host ?? group;
+
+  /// What lists show: the address after the domain (`/news/articles/c123?id=2`),
+  /// since the website is shown next to it. A home page shows its host.
+  /// Copying always uses the whole [cleanUrl].
+  String get displayPath {
+    final u = Uri.tryParse(cleanUrl);
+    if (u == null) return cleanUrl;
+    final path = u.path == '/' ? '' : u.path;
+    final rest = '$path${u.hasQuery ? '?${u.query}' : ''}';
+    if (rest.isEmpty) return host;
+    try {
+      return Uri.decodeFull(rest); // readable: spaces and accents, not %20
+    } on ArgumentError {
+      return rest;
+    }
+  }
   String get group => parsed?.group ?? 'other';
   String get canonicalKey => parsed?.canonicalKey ?? 'raw:$url';
   String? get lastSegment => parsed?.lastSegment;

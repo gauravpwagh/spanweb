@@ -74,10 +74,11 @@ class _LinkSheetState extends State<_LinkSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (widget.thumbs case final t? when t.allowed(item)) _ThumbSection(thumbs: t, item: item),
-            Text(item.group, style: theme.textTheme.labelLarge),
+            Text(item.host, style: theme.textTheme.labelLarge),
             const SizedBox(height: 6),
-            // Plain selectable text: never turned into a tappable link.
-            SelectableText(item.cleanUrl, style: theme.textTheme.bodyLarge),
+            // Plain text, never a tappable link. Not selectable either, so a
+            // copy always takes the whole link (Copy link below).
+            Text(item.displayPath, style: theme.textTheme.bodyLarge),
             const SizedBox(height: 4),
             Text('Added ${formatDate(item.addedAt)}', style: theme.textTheme.bodySmall),
             const SizedBox(height: 12),
